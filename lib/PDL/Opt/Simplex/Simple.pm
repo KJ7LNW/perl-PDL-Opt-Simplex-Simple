@@ -736,6 +736,8 @@ callback function.
 
 =head1 FUNCTIONS
 
+=over 4 
+
 =item * $self->new(%args) - Instantiate class
 
 =item * $self->optimize() - Run the optimization
@@ -764,6 +766,8 @@ a new refined simplex iteration.
 Useful for calling simplex again with refined values
 
 =item * $self->scale_ssize($scale) - Multiply the current C<ssize> by C<$scale>
+
+=back
 
 =head1 ARGUMENTS
 
@@ -810,6 +814,8 @@ Expanded format:
 		},  ...
 	}
 
+=over 4
+
 =item C<varname>: the name of the variable being used.
 
 =item C<values>:  an arrayref of values to be optimized
@@ -841,26 +847,25 @@ use it.
 
 =item C<perturb_scale>:  Scale parameter before being evaluated by simplex (per index for vectors)
 
-=over 4
-
 This is useful because Simplex's C<ssize> parameter is the same for all
 values and you may find that some values need to be perturbed more or
 less than others while simulating.  User interaction with C<f> and the
 result of C<optimize> will use the normally scaled values supplied by
 the user, this is just an internal scale for simplex.
 
+=over 4
+
 =item Bigger value:  perturb more
 
 =item Smaller value:  perturb less
+
+=back
 
 Internal details: The value passed to simplex is divided by perturb_scale
 parameter before being passed and multiplied by perturb_scale when
 returned.  Thus, perturb_scale=0.1 would make simplex see the value as
 being 10x larger effectively perturbing it less, whereas, perturb_scale=10
 would make it 10x smaller and perturb it more.
-
-=back
-
 
 =item C<enabled>: 1 or 0: enabled a specific index to be optimized (per index for vectors)
 
@@ -876,8 +881,11 @@ structure will be replaced with an arrayref of all 0/1 values.
 certain geometry charactaristics during optimization.
 
 Internally, all values are vectors, even if the vectors are of length 1,
-but you can pass them as singletons like C<spaces> is shown below if
-you need to disable a single value:
+but you can pass them as singletons like C<spaces> as shorthand shown below instead
+of writing C<spaces => [5]>.  In that example you can see that C<spaces> is disabled
+as well, so simplex will not optimize that value.  
+
+    spaces => [ 5 ]
 
     # Element lengths                                                
     vars => {
@@ -893,6 +901,8 @@ you need to disable a single value:
         },
         ...
     }
+
+=back
 
 =back
 
@@ -1003,6 +1013,93 @@ you are optimizing.  The more variables, the bigger the value.  A value
 of 30 seems to work well for 10 variables, so adjust if necessary.
 
 Default: 30
+
+=head1 BEST PRACTICES AND USE CASES
+
+=head2 Set ssize to 1 and scale perturb_scale for each variable.
+
+We were using a proportional-integral-derivative ("PID") controller to
+optimize antenna motion for tracking orbiting satellites like the International
+Space Station.  The goal is to minimize rotor overshoot and increase accuracy
+for the azimuth and elevation axis.  Without getting into the PID controller
+implementation, just know that there are 3 primary terms in a PID controller
+that define its behavior (Kp, Ki, and Kd),  and the satellite tracking is
+"good" if the overshoot is minimal.  Here is a trivial implementation:
+
+	$simpl = PDL::Opt::Simplex::Simple->new(
+		vars => {
+			# initial guess for kp, ki, kd:
+			kp => 150,
+			ki => 120,
+			kd => 5
+		},
+		ssize => 1,
+		f => sub { 
+				my $vars = shift;
+				
+				return track_satellite_get_overshoot(
+					kp => $vars->{kp},
+					ki => $vars->{ki},
+					kd => $vars->{kd});
+			}
+	);
+
+	print Dumper $simpl->optimize();
+
+Note that C<ssize=1> so simplex will purturb the kp/ki/kd values in the range of about 1.  This 
+is great if you are already close to a solution, but in our case kp, ki, and kd need perturbed 
+different amounts.  It turns out that kd is quite small, while the optimal kp and ki values
+need a larger search space.
+
+You might consider increasing C<ssize>, to C<ssize=20> but then kd will scale too quickly.  To achieve
+this we used the extended variable format as follows:
+
+	$simpl = PDL::Opt::Simplex::Simple->new(
+		vars => {
+			# initial guess for kp, ki, kd:
+			kp => {
+				values => 150,
+				perturb_scale => 20,
+			},
+
+			ki => {
+				values => 120,
+				perturb_scale => 15,
+			},
+
+			kd => {
+				values => 5,
+				perturb_scale => 1,
+			},
+		},
+		ssize => 1, # <- ssize is still set to 1 !
+		f => sub { 
+				my $vars = shift;
+				
+				return track_satellite_get_overshoot(
+					kp => $vars->{kp},
+					ki => $vars->{ki},
+					kd => $vars->{kd});
+			}
+	);
+
+	print Dumper $simpl->optimize();
+
+As you can see above, the C<perturb_scale> value is different for each value;
+you could think of C<perturb_scale> as a "local ssize".  Note that C<ssize>
+will still scale everything so if you wish to leave the relative scales defiend
+by C<perturb_scale> but double the search space, then set C<ssize=2>.  
+
+Ultimately simplex found the values to work best around Kp=190.90, Ki=166.33,
+and Kd=1.02.  These values are specific to our hardware implementation
+(rotational mass, motor speed, etc) so the procedure is what is important here,
+not the values.  Typically simplex is used against mathematical models, and it
+was interesting to run simplex against a real physical machine to calculate
+ideal values for its control.  
+
+If you are interested, here is a video about the antenna construction: 
+L<https://youtu.be/Ab_oJHlENwo>
+
 
 =head1 SEE ALSO
 
