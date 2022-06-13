@@ -27,7 +27,7 @@ use warnings;
 
 use Math::Round qw/nearest/;
 use Time::HiRes qw/time/;
-use Data::Dumper;
+#use Data::Dumper;
 
 use PDL;
 use PDL::Opt::Simplex;
