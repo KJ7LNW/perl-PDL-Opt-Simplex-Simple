@@ -37,7 +37,8 @@ sub new
 	my ($class, %args) = @_;
 
 	my %valid_opts = map { $_ => 1 }
-		qw/f log vars ssize max_iter tolerance srand stagnant_minima_count stagnant_minima_tolerance/;
+		qw/f log vars ssize nocache max_iter tolerance srand
+			stagnant_minima_count stagnant_minima_tolerance/;
 
 	foreach my $k (keys %args)
 	{
@@ -158,7 +159,16 @@ sub _optimize
 
 			foreach my $vars (@vars)
 			{
-				push @f_ret, $self->{f}->($vars);
+				# Try to use a cached result:
+				my $result = $self->var_cache($vars);
+
+				if (!defined($result))
+				{
+					$result = $self->{f}->($vars);
+					$self->var_cache($vars => $result);
+				}
+
+				push @f_ret, $result;
 			}
 
 			# We could always `pdl \@f_ret` but it creates a double-nested single
@@ -238,6 +248,8 @@ sub _optimize
 				log_count => $self->{log_count},
 				cancel => $self->{cancel},
 				prev_minima_count => $self->{prev_minima_count},
+				cache_hits => $self->{cache_hits},
+				cache_misses => $self->{cache_misses},
 				all_vars => \@log_vars
 				});
 		}
@@ -923,6 +935,50 @@ sub _get_simplex_vars
 	return @ret;
 }
 
+sub var_cache
+{
+	my ($self, $vars, $value) = @_;
+
+	return undef if ($self->{nocache});
+
+	my $key = '';
+	foreach my $var_name (sort keys(%$vars))
+	{
+		$key .= "$var_name=";
+		if (is_numeric($vars->{$var_name}))
+		{
+			$key .= $vars->{$var_name}
+		}
+		elsif (ref $vars->{$var_name} eq 'ARRAY')
+		{
+			$key .= join(',', @{ $vars->{$var_name} });
+		}
+		else
+		{
+			die "$var_name: invalid ref: " . ref($vars->{$var_name});
+		}
+
+		$key .= ';'
+	}
+
+	if (defined($value) && !defined($self->{_var_cache}{$key}))
+	{
+		$self->{_var_cache}{$key} = $value;
+		return $value;
+	}
+	elsif (defined($self->{_var_cache}{$key}))
+	{
+		$self->{cache_hits}++;
+		return $self->{_var_cache}{$key};
+	}
+	else
+	{
+		$self->{cache_misses}++;
+
+		return undef;
+	}
+}
+
 sub is_numeric
 {
 	my $var = shift;
@@ -1030,7 +1086,6 @@ callback function C<f>.  Internal functions in this class compile the state
 of this variable structure into the vector array needed by simplex,
 and then extract values into a usable format to be passed to the user's
 callback function.
-
 
 =head1 FUNCTIONS
 
@@ -1180,7 +1235,7 @@ certain geometry charactaristics during optimization.
 
 Internally, all values are vectors, even if the vectors are of length 1,
 but you can pass them as singletons like C<spaces> as shorthand shown below instead
-of writing C<spaces => [5]>.  In that example you can see that C<spaces> is disabled
+of writing "spaces => [5]".  In that example you can see that C<spaces> is disabled
 as well, so simplex will not optimize that value.  
 
     spaces => [ 5 ]
@@ -1242,8 +1297,10 @@ values are available in the C<$state> hashref:
 	'best_pass' =>  3,              # the pass# that had the best goal result
 	'log_count' => 22,              # number of times log has been called
 	'prev_minima_count' => 10,      # number of same minima's in a row
-	'cancel' =>     0               # true if the simplex iteration is being cancelled
-	'all_vars' => [{x=>1},...]      # multiple var options from simplex are logged here
+	'cancel' =>     0,              # true if the simplex iteration is being cancelled
+	'all_vars' => [{x=>1},...],     # multiple var options from simplex are logged here
+	'cache_hits' => 100,            # Number of times simplex asked to try the same vars
+	'cache_misses' => 1000,         # Number of times simplex asked to try unique vars
     }
 
 
@@ -1273,6 +1330,16 @@ C<ssize> one-half of the previous:
 
 
 Default: 1
+
+=head2 * C<nocache> - Disable result caching
+
+By default we try not to re-calculate the same values.  This is particularly
+useful when C<round_each> is used because it will round values from before
+passing them to C<f>, which increases the chance of a cache hit.
+
+If you wish to disable caching then set "nocache => 1"
+
+Default: undef (cache enabled)
 
 =head2 * C<max_iter> - Maximim number of Simplex iterations
 
