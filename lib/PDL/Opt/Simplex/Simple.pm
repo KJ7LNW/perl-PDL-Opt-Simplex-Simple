@@ -19,7 +19,6 @@
 #  All tradmarks, product names, logos, and brands are property of their
 #  respective owners and no grant or license is provided thereof.
 
-			
 package PDL::Opt::Simplex::Simple;
 $VERSION = '1.1';
 
@@ -28,6 +27,7 @@ use warnings;
 
 use Math::Round qw/nearest/;
 use Time::HiRes qw/time/;
+use Data::Dumper;
 
 use PDL;
 use PDL::Opt::Simplex;
@@ -38,10 +38,10 @@ sub new
 
 	my $self = bless(\%args, $class);
 
-	$self->{tolerance}              //=  1e-6;
-	$self->{max_iter}               //=  1000;
-	$self->{ssize}                  //=  0.1;
-	$self->{stagnant_minima_count}  //=  30;
+	$self->{tolerance}                 //=  1e-6;
+	$self->{max_iter}                  //=  1000;
+	$self->{ssize}                     //=  1;
+	$self->{stagnant_minima_tolerance} //= $self->{tolerance};
 	
 	if ($self->{srand})
 	{
@@ -85,6 +85,7 @@ sub optimize
 		return $self->_optimize;
 	}
 
+	# Iterate multiple ssize passes if {ssize} was passed as an array:
 	my $result;
 	foreach my $ssize (@{ $self->{_ssize} })
 	{
@@ -118,33 +119,63 @@ sub _optimize
 		# based on the content of $self->{vars}:
 		sub {
 			my ($vec) = @_;
-			my $ret = $vec->slice("(0)");
 
+			# If cancelling, then make the return value really bad so earlier
+			# iterations should be better.
 			if ($self->{cancel})
 			{
+				my $ret = $vec->slice("(0)");
 				$ret *= 0;
-				$ret += -1e9;
+				$ret += 1e15;
 				return $ret;
 			}
 
 			# Call the user's function and pass their vars.
 			# $f_ret is the resulting weight:
-			my $f_ret = $self->{f}->($self->_get_simplex_vars($vec));
+			my @vars = $self->_get_simplex_vars($vec);
 
-			if (!defined($self->{best_minima}) || $f_ret < $self->{best_minima})
+			die "BUG: _vars_are_pdl but \@vars > 1!" if $self->{_vars_are_pdl} and @vars > 1;
+
+			my $f_ret;
+
+			# @f_ret is accumulated with iterations over f() when
+			# vars are not PDL's because simplex may provide f() with an
+			# array of values to test even though the caller's {f}->() may
+			# not support PDLs.
+			#
+			# However, if the caller's vars are all PDLs then _get_simplex_vars
+			# will return a single-element array.
+			my @f_ret;
+
+			foreach my $vars (@vars)
+			{
+				push @f_ret, $self->{f}->($vars);
+			}
+
+			# We could always `pdl \@f_ret` but it creates a double-nested single
+			# dimension array pdl.  Better to leave things as they are and only
+			# create a PDL from the array if it wasn't a PDL to begin with
+			# (ie, when !$self->{_vars_are_pdl}).
+			if ($self->{_vars_are_pdl})
+			{
+				die "BUG: _vars_are_pdl but \@f_ret > 1!" if @f_ret > 1;
+				$f_ret = $f_ret[0];
+			}
+			else
+			{
+				$f_ret = pdl \@f_ret;
+			}
+
+			# $f_ret is guaranteed to be PDL here, so use `any` when comparing the
+			# minima.
+			if (!defined($self->{best_minima}) || any $f_ret < $self->{best_minima})
 			{
 				$self->{best_minima} = $f_ret;
 				$self->{best_vec} = $vec;
 				$self->{best_pass} = $self->{optimization_pass};
 			}
 
-			# Whatever vector format $vec->slice("(0)") is, so $ret must be also.
-			# So slice it, multiply times zero, and then add the result from f() above. 
-			$ret *= 0;
-			$ret += $f_ret;
-
-
-			return $ret;
+			return $f_ret;
 		},
 
 		# log callback
@@ -168,7 +199,9 @@ sub _optimize
 			my $minima = $vec->slice("(0)", 0)->sclr;
 
 			# Cancel early if stagnated:
-			if (defined($self->{prev_minima}) && abs($self->{prev_minima} - $minima) < 1e-6)
+			if (defined($self->{stagnant_minima_count}) &&
+				defined($self->{prev_minima}) && $self->{prev_minima} < $minima &&
+				abs($self->{prev_minima} - $minima) < $self->{stagnant_minima_tolerance})
 			{
 				$self->{prev_minima_count}++;
 				if ($self->{prev_minima_count} > $self->{stagnant_minima_count})
@@ -183,7 +216,8 @@ sub _optimize
 			}
 
 
-			$self->{log}->($self->_get_simplex_vars($vec), {
+			my @log_vars = $self->_get_simplex_vars($vec);
+			$self->{log}->($log_vars[0], {
 				ssize => $ssize,
 				minima => $minima,
 				elapsed => $elapsed,
@@ -194,7 +228,8 @@ sub _optimize
 				best_pass => $self->{best_pass},
 				log_count => $self->{log_count},
 				cancel => $self->{cancel},
-				prev_minima_count => $self->{prev_minima_count}
+				prev_minima_count => $self->{prev_minima_count},
+				all_vars => \@log_vars
 				});
 		}
 	);
@@ -296,9 +331,10 @@ sub _build_simplex_vars
 
 	my $vars = $self->{vars};
 
-	# first element is for simplex's return-value use, set it to 0.	
-	my @pdl_vars = (0);
+	my @pdl_vars;
 
+	my $any_pdl;
+	my $any_scalar;
 	foreach my $var_name (sort keys(%$vars))
 	{
 		my $var = $vars->{$var_name};
@@ -310,12 +346,20 @@ sub _build_simplex_vars
 			# var is enabled for simplex if enabled[$i] == 1
 			if ($var->{enabled}->[$i])
 			{
-				push(@pdl_vars, $var->{values}->[$i] / $var->{perturb_scale}->[$i]);
+				my $val = $var->{values}->[$i];
+				$any_pdl++ if ref($val) eq 'PDL';
+				$any_scalar++ if !ref($val);
+				push(@pdl_vars, $val / $var->{perturb_scale}->[$i]);
 			}
 		}
 	}
 
-	return pdl \@pdl_vars;
+	die "Your {vars} must be either all scalar or all PDL's" if ($any_pdl && $any_scalar);
+
+	$self->{_vars_are_pdl} = 1 if ($any_pdl);
+
+	my $pdl = pdl \@pdl_vars;
+	return $pdl;
 }
 
 sub _simple_to_expanded
@@ -331,7 +375,7 @@ sub _simple_to_expanded
 
 		# Copy the structure from what was passed into the %exp
 		# hash so we can modify it without changing the orignal.
-		if (ref($var) eq '')
+		if (is_numeric($var))
 		{
 			$var = $exp{$var_name} = { values => [ $vars->{$var_name} ] }
 		}
@@ -372,7 +416,7 @@ sub _simple_to_expanded
 			# make a copy to release the original reference: 
 			$var->{values} = [ @{ $var->{values} } ];
 		}
-		elsif (ref($var->{values}) eq '')
+		elsif (is_numeric($var->{values}))
 		{
 			$var->{values} = [ $var->{values} ];
 		}
@@ -386,16 +430,16 @@ sub _simple_to_expanded
 
 		# If enabled is missing or a non-scalar (ie =1 or =0) then form it properly
 		# as either all 1's or all 0's:
-		if (!defined($var->{enabled}) || (!ref($var->{enabled}) && $var->{enabled}))
+		if (!defined($var->{enabled}) || (is_numeric($var->{enabled}) && $var->{enabled}))
 		{
 			$var->{enabled} = [ map { 1 } (1..$n) ] 
 		}
-		elsif (defined($var->{enabled}) && !ref($var->{enabled}) && !$var->{enabled})
+		elsif (defined($var->{enabled}) && is_numeric($var->{enabled}) && !$var->{enabled})
 		{
 			$var->{enabled} = [ map { 0 } (1..$n) ] 
 		}
 
-		if (ref($var->{minmax}) eq 'ARRAY' && ref($var->{minmax}->[0]) eq '' && @{$var->{minmax}} == 2)
+		if (ref($var->{minmax}) eq 'ARRAY' && is_numeric($var->{minmax}->[0]) && @{$var->{minmax}} == 2)
 		{
 			$var->{minmax} = [ map { $var->{minmax} } (1..$n) ];
 		}
@@ -404,17 +448,17 @@ sub _simple_to_expanded
 		$var->{perturb_scale} //= [ map { 1 } (1..$n) ];
 
 		# Make it an array the of length $n:
-		if (!ref($var->{perturb_scale}))
+		if (is_numeric($var->{perturb_scale}))
 		{
 			$var->{perturb_scale} = [ map { $var->{perturb_scale} } (1..$n) ] 
 		}
 
-		if (defined($var->{round_each}) && !ref($var->{round_each}))
+		if (defined($var->{round_each}) && is_numeric($var->{round_each}))
 		{
 			$var->{round_each} = [ map { $var->{round_each} } (1..$n) ] 
 		}
 
-		if (defined($var->{round_result}) && !ref($var->{round_result}))
+		if (defined($var->{round_result}) && is_numeric($var->{round_result}))
 		{
 			$var->{round_result} = [ map { $var->{round_result} } (1..$n) ] 
 		}
@@ -482,7 +526,7 @@ sub _expanded_to_simple
 		{
 			$h{$var} = $vars->{$var};
 		}
-		elsif (ref($vars->{$var}) eq '')
+		elsif (is_numeric($vars->{$var}))
 		{
 			$h{$var} = [ $vars->{$var} ];
 		}
@@ -513,7 +557,7 @@ sub _expanded_to_original
 	my %result;
 	foreach my $var_name (keys(%$orig))
 	{
-		if (ref($orig->{$var_name}) eq '')
+		if (is_numeric($orig->{$var_name}))
 		{
 			$result{$var_name} = $exp->{$var_name}->{values}->[0];
 		}
@@ -553,17 +597,25 @@ sub _vars_round_result
 {
 	my ($vars) = @_;
 
-	foreach my $var (values(%$vars))
+	foreach my $var_name (keys(%$vars))
 	{
+		my $var = $vars->{$var_name};
 		my @round_result;
 
-		next if !ref($var); 
+		next if ref($var) ne 'HASH';
 		next unless defined $var->{round_result};
+
+		# In case values it not an array:
+		if (is_numeric($var->{values}))
+		{
+			$var->{values} = pdl_nearest($var->{round_result}, $var->{values}, 'round_result');
+			next;
+		}
 
 		my $n = @{ $var->{values} };
 
 		# use temp var @round_result so we don't mess with the $vars structure.
-		if (!ref($var->{round_result}))
+		if (is_numeric($var->{round_result}))
 		{
 			@round_result = map { $var->{round_result} } (1..$n);
 		}
@@ -575,14 +627,16 @@ sub _vars_round_result
 		# Round to a precision if defined:
 		foreach (my $i = 0; $i < $n; $i++)
 		{
-			$var->{values}->[$i] = nearest($round_result[$i], $var->{values}->[$i]);
+			$var->{values}->[$i] = pdl_nearest($round_result[$i], $var->{values}->[$i], 'round_result');
 		}
 	}
 
 }
 
 # get a var by name from $self->{vars} but get the value from the pdl if
-# the var is enabled for optimization. Also minmax/perturb_scale as if defined
+# the var is enabled for optimization. Also minmax/perturb_scale as if defined.
+# Returns an array of values representing the variable vector, even if the
+# variable is single-valued.
 sub _get_simplex_var
 {
 	my ($self, $pdl, $var_name) = @_;
@@ -593,10 +647,10 @@ sub _get_simplex_var
 	
 	my $var = $vars->{$var_name};
 
-	my $n = scalar(@{ $var->{values} });
-	my $pdl_idx = 1; # skip first element
+	my $pdl_idx = 0;
 
-	# skip ahead to where the pdl_idx that we need is located:
+	# skip ahead to where the pdl_idx that we need is located if $var_name
+	# is not the first $var we find in the list:
 	foreach my $vn (sort keys(%$vars))
 	{
 		my $var = $vars->{$vn};
@@ -609,7 +663,11 @@ sub _get_simplex_var
 		# The value of $_ in grep{} is either 1 or 0:
 		$pdl_idx++ foreach (grep { $_ } @{ $var->{enabled} });
 	}
-	
+
+	# Iterate each value and pull it in from the simplex vector 
+	# if that particular array index is enabled:
+	my $n = scalar(@{ $var->{values} });
+
 	for (my $i = 0; $i < $n; $i++)
 	{
 		my $val;
@@ -618,7 +676,7 @@ sub _get_simplex_var
 		# otherwise use the original index in $var.
 		if ($var->{enabled}->[$i])
 		{
-			$val = unpdl($pdl->slice("($pdl_idx)", 0))->[0];
+			$val = $pdl->slice("($pdl_idx)");
 			$val *= $var->{perturb_scale}->[$i];
 			$pdl_idx++;
 		}
@@ -631,8 +689,7 @@ sub _get_simplex_var
 		if (defined($var->{minmax}))
 		{
 			my ($min, $max) = @{ $var->{minmax}->[$i] };
-			$val = $min if ($val < $min);
-			$val = $max if ($val > $max);
+			$val = clamp_minmax($val, $min => $max, $var_name);
 		}
 
 		# Round to the nearest value on each iteration.
@@ -641,13 +698,94 @@ sub _get_simplex_var
 		# is available:
 		if (defined($var->{round_each}))
 		{
-			$val = nearest($var->{round_each}->[$i], $val);
+			$val = pdl_nearest($var->{round_each}->[$i], $val, $var_name);
 		}
 
 		push @ret, $val; 
 	}
 
 	return \@ret;
+}
+
+sub pdl_nearest
+{
+	my ($nearest, $val, $noun) = @_;
+
+	$noun //= 'round_each/round_result';
+
+	if (ref($val) ne 'PDL')
+	{
+		$val = nearest($nearest, $val);
+	}
+	else
+	{
+		# Is there a better way? This assumes the round_each array is not a pdl.
+		# The problem is that simplex will give us a piddle of piddles: we might be
+		# passed a PDL with several sliceable values and we need to call nearest on
+		# each element of each element.
+		#
+		# It would be helpful if PDL had a native nearest() impelementation.
+
+		my $idx = 0;
+		$val = pdl_map(sub { nearest($nearest, $_[0]) }, $val);
+	}
+
+	return $val;
+}
+
+sub pdl_map
+{
+	my ($sub, $val) = @_;
+	my @slices;
+	for (my $slice_idx = 0; $slice_idx < $val->nelem; $slice_idx++)
+	{
+		my $s = $val->slice("($slice_idx)");
+
+		my $idx = 0;
+		if ($s->nelem > 1) 
+		{
+			die "BUG: PDLs with more than one value do not work with the pdl_map function."
+		}
+
+		$s = $sub->(@{ unpdl $s });
+		push @slices, $s;
+	}
+
+	# Avoid the PDL of "123" becoming "[123]":
+	if (@slices > 1)
+	{
+		$val = pdl \@slices;
+	}
+	else
+	{
+		$val = pdl $slices[0];
+	}
+
+	return $val;
+}
+
+sub clamp_minmax
+{
+	my ($val, $min, $max) = @_;
+
+	if (ref($val) eq 'PDL')
+	{
+		pdl_map( sub {
+				my $v = shift;
+				$v = $min if $v < $min;
+				$v = $max if $v > $max;
+			}, $val);
+	}
+	elsif ($val < $min)
+	{
+			$val = $min;
+	}
+	elsif ($val > $max)
+	{
+		$val = $max;
+	}
+
+	return $val;
 }
 
 # get all vars replaced with resultant simplex values if enabled=>1 for that var.
@@ -659,18 +797,146 @@ sub _get_simplex_vars
 
 	my %h;
 
-	foreach my $var (keys %$vars)
+	# Get values by name from _get_simplex_var: each of these will be ARRAY-ref's
+	# even if there is only one value:
+	foreach my $var_name (keys %$vars)
 	{
-		$h{$var} = $self->_get_simplex_var($pdl, $var);
+		$h{$var_name} = $self->_get_simplex_var($pdl, $var_name);
+	}
 
-		# collapse single-element arrays as scalars:
-		if (ref($h{$var}) eq 'ARRAY' && scalar(@{ $h{$var} }) == 1)
+	# If all the input variables are PDL's, then f() must support PDL's as inputs.
+	#
+	# else: If all the input variables are _not_ PDLs, then break the PDL's into
+	#       an array of var-hashes and _optimize() will evaluate them iteratively.
+	my @ret;
+	if ($self->{_vars_are_pdl})
+	{
+		@ret = (\%h);
+	}
+	else
+	{
+		# Note: Many of the foreach loops below are dependent on the previous loop
+		# finishing.  It is not possible to merge all loops into one as currently
+		# implemented.
+
+		# First find the $pdl->nelem that was passed by simplex.  This is the number of
+		# entries that must be evaluated, and any non-PDL items that exist when
+		# `!$vars->{$var_name}->{enabled}->[$i]` need to be turned into PDLs
+		# of the same number of elements so simplex is happy.
+		#
+		# Really we should be able to `last` at the first PDL we find, but 
+		# we iterate all of them to sanity-check the code and trigger a `die` below
+		# if they differ, because that means our assumption about how simplex works is wrong:
+		my $pdl_size;
+		foreach my $var_name (keys %h)
 		{
-			$h{$var} = $h{$var}->[0]
+			foreach my $a (grep { ref($_) eq 'PDL' } @{ $h{$var_name} })
+			{
+					my $nelem = $a->nelem;
+
+					if (defined($pdl_size) && $pdl_size != $nelem)
+					{
+							die "BUG: $var_name\->nelem differs from previous vars ($pdl_size != $nelem)";
+					}
+					else
+					{
+							$pdl_size //= $nelem;
+					}
+			}
+		}
+
+		if (!$pdl_size)
+		{
+			die "pdl_size is undefined or zero, are you using any zero-dimension variable arrays?"
+		}
+
+		# Now that we know the $pdl_size, make PDLs of the right size for any non-PDLs
+		# so we can slice them into multiple var sets.
+		foreach my $var_name (keys %h)
+		{
+			my @a;
+			foreach my $a (@{ $h{$var_name} })
+			{
+				if (ref($a) eq 'PDL')
+				{
+					push @a, $a;
+				}
+				elsif (ref($a) eq '')
+				{
+					push @a, pdl [ map { $a } (1..$pdl_size ) ]
+				}
+				else
+				{
+					die "$var_name: unhandled ref type: " . ref($a);
+				}
+			}
+			$h{$var_name} = \@a;
+		}
+
+
+		# At this point all elements to pass to f() should be PDLs.
+		# Break them into an independent vars hash and place each in
+		# @ret.  Note that each of $h{$var_name} is still an ARRAY-ref
+		# even if there is a single element:
+		foreach my $var_name (keys %h)
+		{
+			my $a_idx = 0;
+			foreach my $a (@{ $h{$var_name} })
+			{
+				my $pdl_idx = 0;
+				foreach my $e ($a->list)
+				{
+					$ret[$pdl_idx]->{$var_name}->[$a_idx] = $e;
+					$pdl_idx++;
+				}
+				$a_idx++;
+			}
 		}
 	}
 
-	return \%h;
+	# Collapse single-element arrays as scalars so f() doesn't need to
+	# do something like $vars->{x}[0] and can just use $vars->{x} directly:
+	foreach my $r (@ret)
+	{
+		foreach my $var_name (keys %$r)
+		{
+			if (scalar(@{ $r->{$var_name} }) == 1)
+			{
+				$r->{$var_name} = $r->{$var_name}->[0];
+			}
+		}
+	}
+
+	die "BUG: _get_simplex_vars: !wantarray but \@ret > 1" if @ret > 1 and !wantarray;
+
+	return $ret[0] if (!wantarray);
+
+	return @ret;
+}
+
+sub is_numeric
+{
+	my $var = shift;
+	return (!ref($var) || ref($var) eq 'PDL')
+}
+
+# This is for debugging:
+#
+# Builds a tree from $h that is suitable for passing to Data::Dumper.
+# This is neccesary because PDL's need to be stringified since Dumper()
+# will dump at the object itself.
+sub dumpify
+{
+	my $h = shift;
+
+	return "(undef)" if (!defined($h));
+	return "scalar:$h" if (ref($h) eq '');
+	return "PDL:$h" if (ref($h) eq 'PDL');
+
+	return { map { $_ => dumpify($h->{$_}) } keys(%$h) } if (ref($h) eq 'HASH');
+	return [ map { dumpify($_) } @$h ] if (ref($h) eq 'ARRAY');
+
+	die 'dumpify: unhandled reference: ' . ref($h);
 }
 
 1;
@@ -700,7 +966,8 @@ PDL::Opt::Simplex::Simple - A simplex optimizer for the rest of us
 			}
 	);
 
-	$result_vars = $simpl->optimize();
+	$simpl->optimize();
+	$result_vars = $simpl->get_result_simple();
 
 	print "x=" . $result_vars->{x} . "\n";  # x=-3
 
@@ -967,6 +1234,7 @@ values are available in the C<$state> hashref:
 	'log_count' => 22,              # number of times log has been called
 	'prev_minima_count' => 10,      # number of same minima's in a row
 	'cancel' =>     0               # true if the simplex iteration is being cancelled
+	'all_vars' => [{x=>1},...]      # multiple var options from simplex are logged here
     }
 
 
@@ -995,7 +1263,7 @@ C<ssize> one-half of the previous:
 	ssize => [ 4, 2, 1, 0.5 ]
 
 
-Default: 0.1
+Default: 1
 
 =head2 * C<max_iter> - Maximim number of Simplex iterations
 
@@ -1034,7 +1302,19 @@ Note: This value may be somewhat dependent on the number of variables
 you are optimizing.  The more variables, the bigger the value.  A value
 of 30 seems to work well for 10 variables, so adjust if necessary.
 
-Default: 30
+Simplex will not cancel due to stagnation when C<stagnant_minima_count> is
+undefined.
+
+Default: undef
+
+=head2 * C<stagnant_minima_tolerance> - threshold to count toward C<stagnant_minima_count>
+
+When C<abs($prev_minima - $cur_minima) < $stagnant_minima_count> then the
+iteration will be counted toward stagnation when C<stagnant_minima_count> is
+defined (see above).  Otherwise, we assume progress is being made and the
+stagnation count is reset.
+
+Default: same as C<tolerance> (see above)
 
 =head1 BEST PRACTICES AND USE CASES
 
