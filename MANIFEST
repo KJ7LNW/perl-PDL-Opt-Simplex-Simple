@@ -1,9 +1,16 @@
 Changes
-lib/PDL/Opt/Simplex/Simple.pm
+MANIFEST
 Makefile.PL
-MANIFEST			This list of files
 README
+ignore.txt
+lib/PDL/Opt/Simplex/Simple.pm
 t/00-load.t
 t/manifest.t
 t/pod-coverage.t
 t/pod.t
+t/simplex-2-var-pdl.t
+t/simplex-2-var.t
+t/simplex-array-pdl.t
+t/simplex-array.t
+t/simplex.t
+xt/boilerplate.t
