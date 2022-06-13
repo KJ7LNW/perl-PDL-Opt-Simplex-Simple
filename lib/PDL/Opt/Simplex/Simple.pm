@@ -36,6 +36,15 @@ sub new
 {
 	my ($class, %args) = @_;
 
+	my %valid_opts = map { $_ => 1 }
+		qw/f log vars ssize max_iter tolerance srand stagnant_minima_count stagnant_minima_tolerance/;
+
+	foreach my $k (keys %args)
+	{
+		next if $k =~ /^_/;
+		die "invalid option: $k" if !$valid_opts{$k};
+	}
+
 	my $self = bless(\%args, $class);
 
 	$self->{tolerance}                 //=  1e-6;

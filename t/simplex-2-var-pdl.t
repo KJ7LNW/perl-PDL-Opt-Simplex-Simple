@@ -59,7 +59,6 @@ my $simpl = PDL::Opt::Simplex::Simple->new(
 			minmax => [[-35 => 50]]
 		},
         },
-	round_result => 0.5,
 	ssize => 3,
 	max_iter => 100,
 	tolerance => 1e-6,
