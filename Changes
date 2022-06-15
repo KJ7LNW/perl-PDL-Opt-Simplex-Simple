@@ -1,4 +1,6 @@
 Revision history for PDL-Opt-Simplex-Simple
+1.2     Fixed module dependencies
+        Flagged PDL srand issue
 
 1.1	Fri Jun 10 14:02:46 2022
 	First public release, released on an unsuspecting world.  This release
