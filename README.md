@@ -209,7 +209,7 @@ Expanded format:
             vars => {
                 lengths => {                                                     
                     values         =>  [  1.038,       0.955,        0.959 ],
-                    minmax         =>  [  [0.5=>1.5],  [[0.3=>1.2],  [0.2=>1.1] ],
+                    minmax         =>  [  [0.5=>1.5],  [0.3=>1.2],  [0.2=>1.1] ],
                     perturb_scale  =>  [  10,          100,          1 ],
                     enabled        =>  [  1,           1,            1 ],
                 },                                                       
@@ -479,7 +479,8 @@ Patches welcome ;)
 
 # SEE ALSO
 
-[http://pdl.perl.org/](http://pdl.perl.org/), [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex), [https://en.wikipedia.org/wiki/Simplex\_algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm)
+[http://pdl.perl.org/](http://pdl.perl.org/), [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex), [https://en.wikipedia.org/wiki/Simplex\_algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm),
+[https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple](https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple)
 
 # AUTHOR
 
