@@ -437,6 +437,46 @@ ideal values for its control.
 If you are interested, here is a video about the antenna construction: 
 [https://youtu.be/Ab\_oJHlENwo](https://youtu.be/Ab_oJHlENwo)
 
+## PDL variable considerations
+
+You can use pdl's as vars in your code, but at the moment those pdl's must be singletons.
+
+This will work:
+
+        ->new({
+                vars => { x => pdl(5) }
+        }, ...)
+
+but this will not:
+
+        ->new({
+                vars => { x => pdl([1,2,3]) }
+        }, ...)
+
+If you need PDL vectors in your `f()` call then this could work because
+[PDL::Opt::Simplex::Simple](https://metacpan.org/pod/PDL::Opt::Simplex::Simple) can optimize perl ARRAY ref's:
+
+        ->new({
+                vars => { x => [1,2,3] }
+        }, 
+        f => sub {
+                my $vars = shift;
+                my $x = pdl $vars->{x};
+
+                # do stuff here, maybe return the sum:
+
+                return unpdl(sum $x);
+        },
+        ...)
+
+Future support for this is possible, but there is one major consideration: PDLs
+need to be generically decomposed into a 1-dimensionaly PDL before passing it
+to simplex() and then convert it back to the original N-dimensional form before
+passing it to the user's `f()` call.  This would then enable hash-named
+N-dimensional pdl optimization.
+
+Patches welcome ;)
+
 # SEE ALSO
 
 [http://pdl.perl.org/](http://pdl.perl.org/), [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex), [https://en.wikipedia.org/wiki/Simplex\_algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm)
