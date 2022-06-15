@@ -1246,7 +1246,7 @@ as well, so simplex will not optimize that value.
     vars => {
         lengths => {                                                     
             values         =>  [  1.038,       0.955,        0.959 ],
-            minmax         =>  [  [0.5=>1.5],  [[0.3=>1.2],  [0.2=>1.1] ],
+            minmax         =>  [  [0.5=>1.5],  [0.3=>1.2],  [0.2=>1.1] ],
             perturb_scale  =>  [  10,          100,          1 ],
             enabled        =>  [  1,           1,            1 ],
         },                                                       
