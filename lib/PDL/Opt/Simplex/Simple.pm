@@ -62,6 +62,8 @@ sub new
 		$self->{srand} = srand();
 	}
 
+	$self->{srand} //= 'random seed is unknown, see this issue: https://github.com/PDLPorters/pdl/issues/398';
+
 	# _ssize is the array for multiple simplex retries.
 	if (ref($self->{ssize}) eq 'ARRAY')
 	{
