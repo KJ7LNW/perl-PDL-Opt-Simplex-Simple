@@ -1522,7 +1522,8 @@ Patches welcome ;)
 
 =head1 SEE ALSO
 
-L<http://pdl.perl.org/>, L<PDL::Opt::Simplex>, L<https://en.wikipedia.org/wiki/Simplex_algorithm>
+L<http://pdl.perl.org/>, L<PDL::Opt::Simplex>, L<https://en.wikipedia.org/wiki/Simplex_algorithm>,
+L<https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple>
 
 =head1 AUTHOR
 
