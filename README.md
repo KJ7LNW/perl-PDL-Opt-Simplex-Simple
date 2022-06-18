@@ -59,8 +59,8 @@ that cause the `f` coderef to return the minimum value.  The difference
 between [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex) and [PDL::Opt::Simplex::Simple](https://metacpan.org/pod/PDL::Opt::Simplex::Simple) is that
 [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex) expects all data to be in PDL format and it is
 more complicated to manage, whereas, [PDL::Opt::Simplex:Simple](https://metacpan.org/pod/PDL::Opt::Simplex:Simple) uses
-all scalar Perl values. (PDL values are not supported, or at least,
-have not been tested.)
+all scalar Perl values. (PDL values are supported, too, see the PDL use case
+note below.)
 
 With the original [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex) module, a single vector array
 had to be sliced into the different variables represented by the array.
@@ -103,9 +103,9 @@ callback function.
 
 # ARGUMENTS
 
-## `vars` - Hash of variables to optimize: the answer to your question.
+## \* `vars` - Hash of variables to optimize: the answer to your question.
 
-### Simple `vars` Format 
+### - Simple `vars` Format
 
 Thes are the variables being optimized to find a minimized result.
 The simplex() function returns minimized set of `vars`. In its Simple
@@ -126,7 +126,7 @@ or as vectors of (possibly) different lengths:
                 v => [ 7, 8 ], ...
         }
 
-### Expanded `vars` Format 
+### - Expanded `vars` Format
 
 You may find during optimization that it would
 be convenient to disable certain elements of the vector being optimized
