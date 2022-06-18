@@ -243,7 +243,7 @@ sub _simplex_f
 	die "best_minima: min_ind > 1: $f_ret" if ($min_ind->nelem > 1);
 
 	my $best_minima = $f_ret->index($min_ind);
-	my $best_vars = $vars[$min_ind]; # better way to unpdl?
+	my $best_vars = $vars[$min_ind->sclr]; # better way to unpdl?
 	if (!defined($self->{best_minima}) || $best_minima < $self->{best_minima})
 	{
 		$self->{best_minima} = $best_minima;
