@@ -9,7 +9,7 @@ my %WriteMakefileArgs = (
     VERSION_FROM     => 'lib/PDL/Opt/Simplex/Simple.pm',
     ABSTRACT_FROM    => 'lib/PDL/Opt/Simplex/Simple.pm',
     LICENSE          => 'gpl_3',
-    MIN_PERL_VERSION => '5.006',
+    MIN_PERL_VERSION => '5.010',
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',
     },
