@@ -1,4 +1,7 @@
 Revision history for PDL-Opt-Simplex-Simple
+1.3     Increase accuracy of best_vec.
+        Use die to cancel if simplex is not making progress.
+
 1.2     Fixed module dependencies
         Flagged PDL srand issue
 
