@@ -22,6 +22,7 @@
 package PDL::Opt::Simplex::Simple;
 $VERSION = '1.2';
 
+use 5.010;
 use strict;
 use warnings;
 
@@ -90,7 +91,9 @@ sub optimize
 	$self->{log_count} = 0;
 
 	delete $self->{best_minima};
+	delete $self->{best_vars};
 	delete $self->{best_vec};
+	delete $self->{best_pass};
 
 	if (@{ $self->{_ssize} } == 1)
 	{
@@ -122,144 +125,50 @@ sub _optimize
 	delete $self->{prev_minima};
 	delete $self->{prev_minima_count};
 
-	my ( $vec_optimal, $opt_ssize, $optval ) = simplex($vec_initial,
-		$self->{ssize},
-		$self->{tolerance},
-		$self->{max_iter},
+	my ( $vec_optimal, $opt_ssize, $optval );
 
-		# This is the simplex callback to evaluate the function "f()"
-		# based on the content of $self->{vars}:
-		sub {
-			my ($vec) = @_;
+	# Catch early cancellation
+	eval {
+		($vec_optimal, $opt_ssize, $optval) = simplex($vec_initial,
+			$self->{ssize},
+			$self->{tolerance},
+			$self->{max_iter},
 
-			# If cancelling, then make the return value really bad so earlier
-			# iterations should be better.
-			if ($self->{cancel})
-			{
-				my $ret = $vec->slice("(0)");
-				$ret *= 0;
-				$ret += 1e15;
-				return $ret;
+			# We need to lambda $self into place for the f() and log() callbacks:
+			sub {
+				my ($vec) = @_;
+				return $self->_simplex_f($vec);
+			},
+
+			# log callback
+			sub {
+				my ($vec, $vals, $ssize) = @_;
+				$self->_simplex_log(@_);
 			}
+		);
+	};
+	my $err = $@;
 
-			# Call the user's function and pass their vars.
-			# $f_ret is the resulting weight:
-			my @vars = $self->_get_simplex_vars($vec);
-
-			die "BUG: _vars_are_pdl but \@vars > 1!" if $self->{_vars_are_pdl} and @vars > 1;
-
-			my $f_ret;
-
-			# @f_ret is accumulated with iterations over f() when
-			# vars are not PDL's because simplex may provide f() with an
-			# array of values to test even though the caller's {f}->() may
-			# not support PDLs.
-			#
-			# However, if the caller's vars are all PDLs then _get_simplex_vars
-			# will return a single-element array.
-			my @f_ret;
-
-			foreach my $vars (@vars)
-			{
-				# Try to use a cached result:
-				my $result = $self->var_cache($vars);
-
-				if (!defined($result))
-				{
-					$result = $self->{f}->($vars);
-					$self->var_cache($vars => $result);
-				}
-
-				push @f_ret, $result;
-			}
-
-			# We could always `pdl \@f_ret` but it creates a double-nested single
-			# dimension array pdl.  Better to leave things as they are and only
-			# create a PDL from the array if it wasn't a PDL to begin with
-			# (ie, when !$self->{_vars_are_pdl}).
-			if ($self->{_vars_are_pdl})
-			{
-				die "BUG: _vars_are_pdl but \@f_ret > 1!" if @f_ret > 1;
-				$f_ret = $f_ret[0];
-			}
-			else
-			{
-				$f_ret = pdl \@f_ret;
-			}
-
-			# $f_ret is guaranteed to be PDL here, so use `any` when comparing the
-			# minima.
-			if (!defined($self->{best_minima}) || any $f_ret < $self->{best_minima})
-			{
-				$self->{best_minima} = $f_ret;
-				$self->{best_vec} = $vec;
-				$self->{best_pass} = $self->{optimization_pass};
-			}
-
-			return $f_ret;
-		},
-
-		# log callback
-		sub {
-			my ($vec, $vals, $ssize) = @_;
-			# $vec is the array of values being optimized
-			# $vals is f($vec)
-			# $ssize is the simplex size, or roughly, how close to being converged.
-
-			return unless (defined($self->{log}));
-
-			my $elapsed;
-			if ($self->{prev_time})
-			{
-				$elapsed = time() - $self->{prev_time};
-			}
-			$self->{prev_time} = time();
-
-			$self->{log_count}++;
-
-			my $minima = $vec->slice("(0)", 0)->sclr;
-
-			# Cancel early if stagnated:
-			if (defined($self->{stagnant_minima_count}) &&
-				defined($self->{prev_minima}) && $self->{prev_minima} < $minima &&
-				abs($self->{prev_minima} - $minima) < $self->{stagnant_minima_tolerance})
-			{
-				$self->{prev_minima_count}++;
-				if ($self->{prev_minima_count} > $self->{stagnant_minima_count})
-				{
-					$self->{cancel} = 1;
-				}
-			}
-			elsif (!$self->{cancel})
-			{
-				$self->{prev_minima} = $minima;
-				$self->{prev_minima_count} = 0;
-			}
-
-
-			my @log_vars = $self->_get_simplex_vars($vec);
-			$self->{log}->($log_vars[0], {
-				ssize => $ssize,
-				minima => $minima,
-				elapsed => $elapsed,
-				srand => $self->{srand},
-				optimization_pass => $self->{optimization_pass},
-
-				num_passes => scalar( @{ $self->{_ssize} }),
-				best_pass => $self->{best_pass},
-				log_count => $self->{log_count},
-				cancel => $self->{cancel},
-				prev_minima_count => $self->{prev_minima_count},
-				cache_hits => $self->{cache_hits},
-				cache_misses => $self->{cache_misses},
-				all_vars => \@log_vars
-				});
-		}
-	);
-
-	$self->{vec_optimal} = $vec_optimal;
-	$self->{opt_ssize} = $opt_ssize;
-	$self->{minima} = $optval->sclr;
+	if (!$err)
+	{
+		$self->{vec_optimal} = $vec_optimal;
+		$self->{opt_ssize} = $opt_ssize;
+		$self->{minima} = $optval->sclr;
+	}
+	elsif (!$self->{cancel})
+	{
+		# re-die if it died for a reason other than cancellation:
+		die $err;
+	}
+	else
+	{
+		# Log the cancellation:
+		$self->_simplex_log(
+			$self->{best_vec},
+			$self->_simplex_f($self->{best_vec}),
+			$self->{prev_ssize}
+			);
+	}
 
 	# Return the result in the original vars format that was
 	# passed to new(vars => {...}) so it matches what the user
@@ -267,11 +176,11 @@ sub _optimize
 	# and finally to original:
 
 
-	# Using {best_vec} might end up using a value from a previous
-	# pass, completely disregarding the current pass.  Is this ok?
-	my $result = $self->_get_simplex_vars($self->{best_vec});
-
-	#my $result = $self->_get_simplex_vars($vec_optimal);
+	# Using {best_vec} might end up using a value from a previous pass,
+	# completely disregarding the current pass best of $vec_optimal.  This
+	# should be OK because we make sure that {best_vars} is always populed
+	# by the minimum value returned by f().
+	my $result = $self->{best_vars};
 
 	$result = _simple_to_expanded($result);
 
@@ -285,6 +194,128 @@ sub _optimize
 
 	return $result;
 }
+
+# This is the simplex callback to evaluate the function "f()"
+# based on the content of $self->{vars}:
+sub _simplex_f
+{
+	my ($self, $vec) = @_;
+
+	my @vars = $self->_get_simplex_vars($vec);
+
+	die "BUG: _vars_are_pdl but \@vars > 1!" if $self->{_vars_are_pdl} and @vars > 1;
+
+	# @f_ret is accumulated with iterations over f() when
+	# vars are not PDL's because simplex may provide f() with an
+	# array of values to test even though the caller's {f}->() may
+	# not support PDLs.
+	#
+	# However, if the caller's vars are all PDLs then _get_simplex_vars
+	# will return a single-element array.
+	my @f_ret;
+
+	foreach my $vars (@vars)
+	{
+		# Call the user's function and pass their vars.
+		# $f_ret is the resulting weight:
+		push @f_ret, $self->call_f($vars);
+	}
+
+	# We could always `pdl \@f_ret` but it creates a double-nested single
+	# dimension array pdl.  Better to leave things as they are and only
+	# create a PDL from the array if it wasn't a PDL to begin with
+	# (ie, when !$self->{_vars_are_pdl}).
+	my $f_ret;
+
+	if ($self->{_vars_are_pdl})
+	{
+		die "BUG: _vars_are_pdl but \@f_ret > 1!" if @f_ret > 1;
+		$f_ret = $f_ret[0];
+	}
+	else
+	{
+		$f_ret = pdl \@f_ret;
+	}
+
+	# $f_ret is guaranteed to be PDL here.  Find the minimum result,
+	# that is our best index for this iteration:
+	my $min_ind = minimum_ind($f_ret);
+	die "best_minima: min_ind > 1: $f_ret" if ($min_ind->nelem > 1);
+
+	my $best_minima = $f_ret->index($min_ind);
+	my $best_vars = $vars[$min_ind]; # better way to unpdl?
+	if (!defined($self->{best_minima}) || $best_minima < $self->{best_minima})
+	{
+		$self->{best_minima} = $best_minima;
+		$self->{best_vec} = $vec;
+		$self->{best_vars} = $best_vars;
+		$self->{best_pass} = $self->{optimization_pass};
+	}
+
+	return $f_ret;
+}
+
+sub _simplex_log
+{
+	# $vec is the array of values being optimized
+	# $vals is f($vec)
+	# $ssize is the simplex size, or roughly, how close to being converged.
+	my ($self, $vec, $vals, $ssize) = @_;
+
+	$self->{prev_ssize} = $ssize;
+	return unless (defined($self->{log}));
+
+	my $elapsed;
+	if ($self->{prev_time})
+	{
+		$elapsed = time() - $self->{prev_time};
+	}
+	$self->{prev_time} = time();
+
+	$self->{log_count}++;
+
+	my $minima = $vec->slice("(0)", 0)->sclr;
+
+	# Cancel early if stagnated:
+	if (defined($self->{stagnant_minima_count}) &&
+		defined($self->{prev_minima}) && $self->{prev_minima} < $minima &&
+		abs($self->{prev_minima} - $minima) < $self->{stagnant_minima_tolerance})
+	{
+		$self->{prev_minima_count}++;
+		if (!$self->{cancel} && $self->{prev_minima_count} > $self->{stagnant_minima_count})
+		{
+			$self->{cancel} = 1;
+			die "CANCEL";
+		}
+	}
+	elsif (!$self->{cancel})
+	{
+		# Record the minima for the previous iteration
+		# to see if it needs to cancel (above).
+		$self->{prev_minima} = $minima; 
+		$self->{prev_minima_count} = 0;
+	}
+
+
+	my @log_vars = $self->_get_simplex_vars($vec);
+	$self->{log}->($log_vars[0], {
+		ssize => $ssize,
+		minima => $minima,
+		elapsed => $elapsed,
+		srand => $self->{srand},
+		optimization_pass => $self->{optimization_pass},
+
+		num_passes => scalar( @{ $self->{_ssize} }),
+		best_pass => $self->{best_pass},
+		log_count => $self->{log_count},
+		cancel => $self->{cancel},
+		prev_minima_count => $self->{prev_minima_count},
+		cache_hits => $self->{cache_hits},
+		cache_misses => $self->{cache_misses},
+		all_vars => \@log_vars
+		});
+}
+
 
 sub get_vars_expanded
 {
@@ -930,11 +961,18 @@ sub _get_simplex_vars
 		}
 	}
 
-	die "BUG: _get_simplex_vars: !wantarray but \@ret > 1" if @ret > 1 and !wantarray;
+	die "BUG: _get_simplex_vars: !wantarray but \@ret > 1: pdl=$pdl" if @ret > 1 and !wantarray;
 
 	return $ret[0] if (!wantarray);
 
 	return @ret;
+}
+
+sub get_best_simplex_vars
+{
+	my $self = shift;
+
+	return $self->_get_simplex_vars($self->{best_vec});
 }
 
 sub var_cache
@@ -979,6 +1017,22 @@ sub var_cache
 
 		return undef;
 	}
+}
+
+sub call_f
+{
+	my ($self, $vars) = @_;
+
+	# Try to use a cached result:
+	my $result = $self->var_cache($vars);
+
+	if (!defined($result))
+	{
+		$result = $self->{f}->($vars);
+		$self->var_cache($vars => $result);
+	}
+
+	return $result;
 }
 
 sub is_numeric
@@ -1073,8 +1127,8 @@ that cause the C<f> coderef to return the minimum value.  The difference
 between L<PDL::Opt::Simplex> and L<PDL::Opt::Simplex::Simple> is that
 L<PDL::Opt::Simplex> expects all data to be in PDL format and it is
 more complicated to manage, whereas, L<PDL::Opt::Simplex:Simple> uses
-all scalar Perl values. (PDL values are not supported, or at least,
-have not been tested.)
+all scalar Perl values. (PDL values are supported, too, see the PDL use case
+note below.)
 
 With the original L<PDL::Opt::Simplex> module, a single vector array
 had to be sliced into the different variables represented by the array.
@@ -1126,9 +1180,9 @@ Useful for calling simplex again with refined values
 
 =head1 ARGUMENTS
 
-=head2 C<vars> - Hash of variables to optimize: the answer to your question.
+=head2 * C<vars> - Hash of variables to optimize: the answer to your question.
 
-=head3 Simple C<vars> Format 
+=head3 - Simple C<vars> Format
 
 Thes are the variables being optimized to find a minimized result.
 The simplex() function returns minimized set of C<vars>. In its Simple
@@ -1149,7 +1203,7 @@ or as vectors of (possibly) different lengths:
 		v => [ 7, 8 ], ...
 	}
 
-=head3 Expanded C<vars> Format 
+=head3 - Expanded C<vars> Format
 
 You may find during optimization that it would
 be convenient to disable certain elements of the vector being optimized
