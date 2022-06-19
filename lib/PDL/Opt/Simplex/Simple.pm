@@ -20,7 +20,7 @@
 #  respective owners and no grant or license is provided thereof.
 
 package PDL::Opt::Simplex::Simple;
-$VERSION = '1.3';
+$VERSION = '1.3.1';
 
 use 5.010;
 use strict;
@@ -60,18 +60,21 @@ sub new
 	}
 	else 
 	{
-		# Generate a 15-digit random seed.  This is necessary because PDL::srand
-		# does not return the seed.  So we generate one, set it, and keep it for 
-		# the calling application if they are interested.  Note that this is not
-		# meant to be cryptographically strong, just a way to set a known seed
-		# to replay the same simplex cycle.
+		# Generate a 15-digit random seed.  This is necessary because
+		# PDL::srand does not return the seed---so we generate one, set
+		# it, and keep it for the calling application if they are
+		# interested.  Note that this is not meant to be
+		# cryptographically strong, just a way to set a known seed to
+		# replay the same simplex cycle for testing.  If you get a good
+		# result and it is dependent on this value then you might want
+		# to keep it around.
 		#
 		# See this issue for detail:
 		# 	https://github.com/PDLPorters/pdl/issues/398
 		$self->{srand} = int(rand() * (10**15));
 		srand($self->{srand});
 	}
-	#
+
 	# _ssize is the array for multiple simplex retries.
 	if (ref($self->{ssize}) eq 'ARRAY')
 	{
