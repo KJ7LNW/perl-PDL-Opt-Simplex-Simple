@@ -20,7 +20,7 @@
 #  respective owners and no grant or license is provided thereof.
 
 package PDL::Opt::Simplex::Simple;
-$VERSION = '1.3.1';
+$VERSION = '1.4';
 
 use 5.010;
 use strict;
@@ -1460,7 +1460,47 @@ Default: same as C<tolerance> (see above)
 
 =head1 BEST PRACTICES AND USE CASES
 
-=head2 Set ssize to 1 and scale perturb_scale for each variable.
+=head2 Antenna Geometry: Use an array for the C<ssize> parameter from coarse to fine perturbation.
+
+This C<PDL::Opt::Simplex::Simple> module was originally written to optimize
+antenna geometries in conjunction with the "Optimizer Output" feature of the
+xnec2c (L<https://www.xnec2c.org>) antenna simulator. The behavior is best
+described by Neoklis Kyriazis, 5B4AZ who originally wrote xnec2c:
+L<http://www.5b4az.org/pages/antenna_designs.html>
+
+	"Xnec2c monitors its .nec input file for changes and re-runs the
+	frequency stepping loop which recalculates new data and prints to the
+	.csv file. It is therefore possible to arrange the optimizer program to
+	read the .csv data file, recalculate antenna parameters and save them
+	to the .nec input file.
+
+	Xnec2c will then recalculate and save new frequency-dependent data to
+	the .csv file.  If the optimizer program is arranged to monitor changes
+	to the .csv file, then a continuous loop can be created in which new
+	antenna parameters are calculated and saved to the .nec file, new
+	frequency dependent data are calculated and saved to the .csv file and
+	the loop repeated until the desired results (optimization) are
+	obtained."
+
+We find that a coarse "first pass" value for C<ssize> may not produce optimal
+results, so C<PDL::Opt::Simplex::Simple> will perform additional simplex
+iterations if you specify C<ssize> with multiple values to retry once a
+previous iteration finds a "good" (but not "great") result; the best minima
+from across all simplex passes is kept as the final result in case latter passes
+do not perform as well:
+
+	ssize => [ 0.090, 0.075, 0.050, 0.025, 0.012 ]
+
+This allows us to optimize antenna gain from 10.2 dBi with a single pass to
+11.3 dBi after 5 passes, in addition to a much improved VSWR value.
+
+See L<https://github.com/KJ7LNW/xnec2c-optimize> for sample graphs and more
+information, including documentation to setup the demo so you can see
+C<PDL::Opt::Simplex::Simple> in action as the graphs update in real-time during
+the optimization process.
+
+
+=head2 PID Controller: Set ssize to 1 and scale perturb_scale for each variable.
 
 We were using a proportional-integral-derivative ("PID") controller to
 optimize antenna motion for tracking orbiting satellites like the International
@@ -1584,10 +1624,31 @@ N-dimensional pdl optimization.
 
 Patches welcome ;)
 
+
 =head1 SEE ALSO
 
-L<http://pdl.perl.org/>, L<PDL::Opt::Simplex>, L<https://en.wikipedia.org/wiki/Simplex_algorithm>,
-L<https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple>
+=head2 Upstream modules:
+
+=over 4
+
+=item Video about how optimization algorithms like Simplex work, visually: L<https://youtu.be/NI3WllrvWoc>
+
+=item Wikipedia Article: L<https://en.wikipedia.org/wiki/Simplex_algorithm>,
+
+=item PDL Implementation of Simplex: L<PDL::Opt::Simplex>, L<http://pdl.perl.org/>
+
+=item This modules github repository: L<https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple>
+
+=back
+
+=head2 Example links:
+
+=over 4
+
+=item Antenna Geometry Optimization: L<https://github.com/KJ7LNW/xnec2c-optimize>
+
+=back
+
 
 =head1 AUTHOR
 
@@ -1597,7 +1658,7 @@ optimize antenna geometry for the L<https://www.xnec2c.org> project.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2021 eWheeler, Inc. L<https://www.linuxglobal.com/>
+Copyright (C) 2022 eWheeler, Inc. L<https://www.linuxglobal.com/>
 
 This module is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the

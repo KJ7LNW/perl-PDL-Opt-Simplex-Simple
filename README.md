@@ -353,7 +353,46 @@ Default: same as `tolerance` (see above)
 
 # BEST PRACTICES AND USE CASES
 
-## Set ssize to 1 and scale perturb\_scale for each variable.
+## Antenna Geometry: Use an array for the `ssize` parameter from coarse to fine perturbation.
+
+This `PDL::Opt::Simplex::Simple` module was originally written to optimize
+antenna geometries in conjunction with the "Optimizer Output" feature of the
+xnec2c ([https://www.xnec2c.org](https://www.xnec2c.org)) antenna simulator. The behavior is best
+described by Neoklis Kyriazis, 5B4AZ who originally wrote xnec2c:
+[http://www.5b4az.org/pages/antenna\_designs.html](http://www.5b4az.org/pages/antenna_designs.html)
+
+        "Xnec2c monitors its .nec input file for changes and re-runs the
+        frequency stepping loop which recalculates new data and prints to the
+        .csv file. It is therefore possible to arrange the optimizer program to
+        read the .csv data file, recalculate antenna parameters and save them
+        to the .nec input file.
+
+        Xnec2c will then recalculate and save new frequency-dependent data to
+        the .csv file.  If the optimizer program is arranged to monitor changes
+        to the .csv file, then a continuous loop can be created in which new
+        antenna parameters are calculated and saved to the .nec file, new
+        frequency dependent data are calculated and saved to the .csv file and
+        the loop repeated until the desired results (optimization) are
+        obtained."
+
+We find that a coarse "first pass" value for `ssize` may not produce optimal
+results, so `PDL::Opt::Simplex::Simple` will perform additional simplex
+iterations if you specify `ssize` with multiple values to retry once a
+previous iteration finds a "good" (but not "great") result; the best minima
+from across all simplex passes is kept as the final result in case latter passes
+do not perform as well:
+
+        ssize => [ 0.090, 0.075, 0.050, 0.025, 0.012 ]
+
+This allows us to optimize antenna gain from 10.2 dBi with a single pass to
+11.3 dBi after 5 passes, in addition to a much improved VSWR value.
+
+See [https://github.com/KJ7LNW/xnec2c-optimize](https://github.com/KJ7LNW/xnec2c-optimize) for sample graphs and more
+information, including documentation to setup the demo so you can see
+`PDL::Opt::Simplex::Simple` in action as the graphs update in real-time during
+the optimization process.
+
+## PID Controller: Set ssize to 1 and scale perturb\_scale for each variable.
 
 We were using a proportional-integral-derivative ("PID") controller to
 optimize antenna motion for tracking orbiting satellites like the International
@@ -479,8 +518,16 @@ Patches welcome ;)
 
 # SEE ALSO
 
-[http://pdl.perl.org/](http://pdl.perl.org/), [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex), [https://en.wikipedia.org/wiki/Simplex\_algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm),
-[https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple](https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple)
+## Upstream modules:
+
+- Video about how optimization algorithms like Simplex work, visually: [https://youtu.be/NI3WllrvWoc](https://youtu.be/NI3WllrvWoc)
+- Wikipedia Article: [https://en.wikipedia.org/wiki/Simplex\_algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm),
+- PDL Implementation of Simplex: [PDL::Opt::Simplex](https://metacpan.org/pod/PDL::Opt::Simplex), [http://pdl.perl.org/](http://pdl.perl.org/)
+- This modules github repository: [https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple](https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple)
+
+## Example links:
+
+- Antenna Geometry Optimization: [https://github.com/KJ7LNW/xnec2c-optimize](https://github.com/KJ7LNW/xnec2c-optimize)
 
 # AUTHOR
 
@@ -489,7 +536,7 @@ optimize antenna geometry for the [https://www.xnec2c.org](https://www.xnec2c.or
 
 # COPYRIGHT
 
-Copyright (C) 2021 eWheeler, Inc. [https://www.linuxglobal.com/](https://www.linuxglobal.com/)
+Copyright (C) 2022 eWheeler, Inc. [https://www.linuxglobal.com/](https://www.linuxglobal.com/)
 
 This module is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
