@@ -56,15 +56,22 @@ sub new
 	
 	if ($self->{srand})
 	{
-		$self->{srand} = srand($self->{srand});
+		srand($self->{srand});
 	}
 	else 
 	{
-		$self->{srand} = srand();
+		# Generate a 15-digit random seed.  This is necessary because PDL::srand
+		# does not return the seed.  So we generate one, set it, and keep it for 
+		# the calling application if they are interested.  Note that this is not
+		# meant to be cryptographically strong, just a way to set a known seed
+		# to replay the same simplex cycle.
+		#
+		# See this issue for detail:
+		# 	https://github.com/PDLPorters/pdl/issues/398
+		$self->{srand} = int(rand() * (10**15));
+		srand($self->{srand});
 	}
-
-	$self->{srand} //= 'random seed is unknown, see this issue: https://github.com/PDLPorters/pdl/issues/398';
-
+	#
 	# _ssize is the array for multiple simplex retries.
 	if (ref($self->{ssize}) eq 'ARRAY')
 	{
