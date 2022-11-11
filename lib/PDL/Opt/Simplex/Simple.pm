@@ -39,7 +39,8 @@ sub new
 
 	my %valid_opts = map { $_ => 1 }
 		qw/f log vars ssize nocache max_iter tolerance srand
-			stagnant_minima_count stagnant_minima_tolerance/;
+			stagnant_minima_count stagnant_minima_tolerance
+			reduce_search/;
 
 	foreach my $k (keys %args)
 	{
@@ -224,11 +225,25 @@ sub _simplex_f
 	# will return a single-element array.
 	my @f_ret;
 
-	foreach my $vars (@vars)
+	# Sometimes PDL provides multiple variable sets to calculate.  If 'reduce_search'
+	# is flagged then treat them as the same and only evaluate the first variable set.
+	# This speeds up the optimization but may provide suboptimal results.
+	if ($self->{reduce_search})
 	{
 		# Call the user's function and pass their vars.
-		# $f_ret is the resulting weight:
-		push @f_ret, $self->call_f($vars);
+		my $ret = $self->call_f($vars[0]);
+
+		# @f_ret is the resulting weight, which is the same for _all_ vars:
+		push @f_ret, $ret foreach @vars;
+	}
+	else
+	{
+		foreach my $vars (@vars)
+		{
+			# Call the user's function and pass their vars.
+			# @f_ret is the resulting weight for _each_ var:
+			push @f_ret, $self->call_f($vars);
+		}
 	}
 
 	# We could always `pdl \@f_ret` but it creates a double-nested single
@@ -284,7 +299,7 @@ sub _simplex_log
 
 	$self->{log_count}++;
 
-	my $minima = $vec->slice("(0)", 0)->sclr;
+	my $minima = $self->{best_minima};
 
 	# Cancel early if stagnated:
 	if (defined($self->{stagnant_minima_count}) &&
@@ -309,7 +324,7 @@ sub _simplex_log
 
 	my @log_vars = $self->_get_simplex_vars($vec);
 	$self->{log}->($log_vars[0], {
-		ssize => $ssize,
+		ssize => $ssize->sclr,
 		minima => $minima,
 		elapsed => $elapsed,
 		srand => $self->{srand},
@@ -317,6 +332,8 @@ sub _simplex_log
 
 		num_passes => scalar( @{ $self->{_ssize} }),
 		best_pass => $self->{best_pass},
+		best_minima => $self->{best_minima}->sclr,
+		best_vars => $self->{best_vars},
 		log_count => $self->{log_count},
 		cancel => $self->{cancel},
 		prev_minima_count => $self->{prev_minima_count},
@@ -834,11 +851,7 @@ sub clamp_minmax
 
 	if (ref($val) eq 'PDL')
 	{
-		pdl_map( sub {
-				my $v = shift;
-				$v = $min if $v < $min;
-				$v = $max if $v > $max;
-			}, $val);
+		$val .= $val->clip($min, $max);
 	}
 	elsif ($val < $min)
 	{
@@ -1361,6 +1374,8 @@ values are available in the C<$state> hashref:
 	'optimization_pass' => 3,       # pass# if multiple ssizes are used
 	'num_passes' => 6,              # total number of passes
 	'best_pass' =>  3,              # the pass# that had the best goal result
+	'best_minima' => 0.2345         # The least value so far, returned by "f"
+	'best_vars' => { x=>1, ...}     # The vars associated with "best_minima"
 	'log_count' => 22,              # number of times log has been called
 	'prev_minima_count' => 10,      # number of same minima's in a row
 	'cancel' =>     0,              # true if the simplex iteration is being cancelled
@@ -1457,6 +1472,18 @@ defined (see above).  Otherwise, we assume progress is being made and the
 stagnation count is reset.
 
 Default: same as C<tolerance> (see above)
+
+=head2 C<reduce_search> - Reduce the search space
+
+Sometimes PDL provides multiple variable sets to calculate during an iteration.
+If C<reduce_search =E<gt> 1> is flagged then treat all variable sets as the
+same by only evaluating the first variable set and returning that result for
+all sets.  This speeds up the optimization but may provide sub-optimal results.
+
+This was the original behavior in back in Version 1.1, so newer versions are (probably) more
+accurate but will take longer to complete.  However, it is still useful if you have a slow
+computation (C<f>) and want to converge sooner for an initial first pass.  It is still recommended
+to run a final pass without C<reduce_search>.
 
 =head1 BEST PRACTICES AND USE CASES
 
@@ -1646,6 +1673,8 @@ Patches welcome ;)
 =over 4
 
 =item Antenna Geometry Optimization: L<https://github.com/KJ7LNW/xnec2c-optimize>
+
+=item PID Controller Optimization: L<https://github.com/KJ7NLL/space-ham/blob/master/optimize-pid.pl>
 
 =back
 
