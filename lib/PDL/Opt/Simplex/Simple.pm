@@ -136,6 +136,19 @@ sub _optimize
 	delete $self->{prev_minima};
 	delete $self->{prev_minima_count};
 
+	# Make an initial call if this is the first pass to create a basis for
+	# {best_vars} in case the starting point is better than all other
+	# simplex attempts.  The result will be cached so if Simplex calls with
+	# the same value then it will not waste an iteration (unless nocache is
+	# flagged).
+	#
+	# Also call the log function in case it is useful:
+	if ($self->{optimization_pass} == 1)
+	{
+		my $vec_result = $self->_simplex_f($vec_initial);
+		$self->_simplex_log($vec_initial, $vec_result, pdl $self->{ssize});
+	}
+
 	my ( $vec_optimal, $opt_ssize, $optval );
 
 	# Catch early cancellation
