@@ -1,4 +1,7 @@
 Revision history for PDL-Opt-Simplex-Simple
+1.6	2022-11-13T22:37:33-08:00
+	- Hopefully fixed ->sclr regression reported by some testers.
+
 1.5	2022-11-10T18:46:56-08:00
 	- Added option to reduce simplex search space (reduce_search)
 	- Fixed min/max clipping bug when handling PDL-valued variables
