@@ -337,7 +337,8 @@ sub _simplex_log
 
 	my @log_vars = $self->_get_simplex_vars($vec);
 	$self->{log}->($log_vars[0], {
-		ssize => $ssize->sclr,
+		ssize =>
+			ref($ssize) eq 'PDL' ? $ssize->sclr : $ssize,
 		minima => $minima,
 		elapsed => $elapsed,
 		srand => $self->{srand},
@@ -345,7 +346,8 @@ sub _simplex_log
 
 		num_passes => scalar( @{ $self->{_ssize} }),
 		best_pass => $self->{best_pass},
-		best_minima => $self->{best_minima}->sclr,
+		best_minima =>
+			ref($self->{best_minima}) eq 'PDL' ? $self->{best_minima}->sclr : $self->{best_minima},
 		best_vars => $self->{best_vars},
 		log_count => $self->{log_count},
 		cancel => $self->{cancel},
