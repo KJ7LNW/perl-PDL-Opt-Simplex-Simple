@@ -37,22 +37,45 @@ sub new
 {
 	my ($class, %args) = @_;
 
-	my %valid_opts = map { $_ => 1 }
-		qw/f log vars ssize nocache max_iter tolerance srand
-			stagnant_minima_count stagnant_minima_tolerance
-			reduce_search/;
+	my %valid_args = map { $_ => 1 }
+		qw/f log vars
+			max_iter
+			nocache
+			tolerance
+			srand
+			stagnant_minima_count
+			stagnant_minima_tolerance
+
+			opts
+			/;
 
 	foreach my $k (keys %args)
 	{
 		next if $k =~ /^_/;
-		die "invalid option: $k" if !$valid_opts{$k};
+		die "invalid option: $k" if !$valid_args{$k};
+	}
+
+	# Only check simplex opts if this is the PDL::Opt::Simplex::Simple class:
+	if ($class eq __PACKAGE__)
+	{
+		$args{opts}{ssize} //=  1;
+
+		my %valid_simplex_opts = map { $_ => 1 }
+				qw/	ssize
+					reduce_search
+				/;
+
+		foreach my $k (keys %{ $args{opts} // {} })
+		{
+			next if $k =~ /^_/;
+			die "invalid option: $k" if !$valid_simplex_opts{$k};
+		}
 	}
 
 	my $self = bless(\%args, $class);
 
 	$self->{tolerance}                 //=  1e-6;
 	$self->{max_iter}                  //=  1000;
-	$self->{ssize}                     //=  1;
 	$self->{stagnant_minima_tolerance} //= $self->{tolerance};
 	
 	if ($self->{srand})
@@ -77,15 +100,15 @@ sub new
 	}
 
 	# _ssize is the array for multiple simplex retries.
-	if (ref($self->{ssize}) eq 'ARRAY')
+	if (ref($self->{opts}{ssize}) eq 'ARRAY')
 	{
-		$self->{_ssize} = $self->{ssize};
+		$self->{_ssize} = $self->{opts}{ssize};
 
-		$self->{ssize} = $self->{ssize}[0];
+		$self->{opts}{ssize} = $self->{opts}{ssize}[0];
 	}
 	else
 	{
-		$self->{_ssize} = [ $self->{ssize} ];
+		$self->{_ssize} = [ $self->{opts}{ssize} ];
 	}
 
 	$self->set_vars($self->{vars});
@@ -146,7 +169,7 @@ sub _optimize
 	if ($self->{optimization_pass} == 1)
 	{
 		my $vec_result = $self->_simplex_f($vec_initial);
-		$self->_simplex_log($vec_initial, $vec_result, pdl $self->{ssize});
+		$self->_simplex_log($vec_initial, $vec_result, pdl $self->{opts}{ssize});
 	}
 
 	my ( $vec_optimal, $opt_ssize, $optval );
@@ -154,7 +177,7 @@ sub _optimize
 	# Catch early cancellation
 	eval {
 		($vec_optimal, $opt_ssize, $optval) = simplex($vec_initial,
-			$self->{ssize},
+			$self->{opts}{ssize},
 			$self->{tolerance},
 			$self->{max_iter},
 
@@ -241,7 +264,7 @@ sub _simplex_f
 	# Sometimes PDL provides multiple variable sets to calculate.  If 'reduce_search'
 	# is flagged then treat them as the same and only evaluate the first variable set.
 	# This speeds up the optimization but may provide suboptimal results.
-	if ($self->{reduce_search})
+	if ($self->{opts}{reduce_search})
 	{
 		# Call the user's function and pass their vars.
 		my $ret = $self->call_f($vars[0]);
@@ -406,14 +429,14 @@ sub set_ssize
 {
 	my ($self, $ssize) = @_;
 
-	$self->{ssize} = $ssize;
+	$self->{opts}{ssize} = $ssize;
 }
 
 sub scale_ssize
 {
 	my ($self, $scale) = @_;
 
-	$self->{ssize} *= $scale;
+	$self->{opts}{ssize} *= $scale;
 }
 
 # Iterate the vars that are enabled in order that they
