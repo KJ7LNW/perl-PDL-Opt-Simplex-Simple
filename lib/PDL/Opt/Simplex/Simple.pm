@@ -817,7 +817,7 @@ sub _get_simplex_var
 		# otherwise use the original index in $var.
 		if ($var->{enabled}->[$i])
 		{
-			$val = $pdl->slice("($pdl_idx)");
+			$val = $pdl->slice("($pdl_idx)")->copy;
 			$val *= $var->{perturb_scale}->[$i];
 			$pdl_idx++;
 		}
