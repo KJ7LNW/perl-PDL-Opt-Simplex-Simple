@@ -416,19 +416,17 @@ sub scale_ssize
 	$self->{ssize} *= $scale;
 }
 
-
-
-# build a pdl for use by simplex()
-sub _build_simplex_vars 
+# Iterate the vars that are enabled in order that they
+# will be populated (sorted by name) and call $f->($var)
+# each iteration.  Return the result as a piddle.
+sub _build_enabled_var_list
 {
-	my ($self) = @_;
+	my ($self, $f) = @_;
 
 	my $vars = $self->{vars};
 
-	my @pdl_vars;
+	my @ret_vars;
 
-	my $any_pdl;
-	my $any_scalar;
 	foreach my $var_name (sort keys(%$vars))
 	{
 		my $var = $vars->{$var_name};
@@ -440,19 +438,45 @@ sub _build_simplex_vars
 			# var is enabled for simplex if enabled[$i] == 1
 			if ($var->{enabled}->[$i])
 			{
-				my $val = $var->{values}->[$i];
-				$any_pdl++ if ref($val) eq 'PDL';
-				$any_scalar++ if !ref($val);
-				push(@pdl_vars, $val / $var->{perturb_scale}->[$i]);
+				my %opts;
+				foreach my $opt (keys %$var)
+				{
+					$opts{$opt} = $var->{$opt}->[$i];
+				}
+				$opts{value} = delete $opts{values}; # singular
+				push @ret_vars, $f->(\%opts);
+
 			}
 		}
 	}
+
+	my $pdl = pdl \@ret_vars;
+	return $pdl;
+
+}
+
+# build a pdl for use by simplex()
+sub _build_simplex_vars
+{
+	my ($self) = @_;
+
+	my $any_pdl;
+	my $any_scalar;
+
+	my $pdl = $self->_build_enabled_var_list(sub {
+			my $var = shift;
+			my $val = $var->{value};
+
+			$any_pdl++ if ref($val) eq 'PDL';
+			$any_scalar++ if !ref($val);
+
+			return $val / $var->{perturb_scale};
+		});
 
 	die "Your {vars} must be either all scalar or all PDL's" if ($any_pdl && $any_scalar);
 
 	$self->{_vars_are_pdl} = 1 if ($any_pdl);
 
-	my $pdl = pdl \@pdl_vars;
 	return $pdl;
 }
 
