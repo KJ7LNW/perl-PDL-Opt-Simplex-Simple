@@ -49,16 +49,22 @@ sub new
 			opts
 			/;
 
-	foreach my $k (keys %args)
-	{
-		next if $k =~ /^_/;
-		die "invalid option: $k" if !$valid_args{$k};
-	}
-
 	# Only check simplex opts if this is the PDL::Opt::Simplex::Simple class:
 	if ($class eq __PACKAGE__)
 	{
-		$args{opts}{ssize} //=  1;
+		my $ssize = delete $args{ssize};
+		if ($ssize)
+		{
+			warn "deprecation: ssize should be secified as new(opts => {ssize => $ssize})";
+			if (defined($args{opts}{ssize}))
+			{
+				die "you cannot specify both 'ssize => $ssize' and 'opts => { ssize=>X }'";
+			}
+
+			$args{opts}{ssize} = $ssize;
+		}
+
+		$args{opts}{ssize} //= 1;
 
 		my %valid_simplex_opts = map { $_ => 1 }
 				qw/	ssize
@@ -70,6 +76,12 @@ sub new
 			next if $k =~ /^_/;
 			die "invalid option: $k" if !$valid_simplex_opts{$k};
 		}
+	}
+
+	foreach my $k (keys %args)
+	{
+		next if $k =~ /^_/;
+		die "invalid option: $k" if !$valid_args{$k};
 	}
 
 	my $self = bless(\%args, $class);
@@ -1263,12 +1275,17 @@ PDL::Opt::Simplex::Simple - A simplex optimizer for the rest of us
 		f => sub { 
 				my ($vec1, $vec2) = ($_->{vec1}, $_->{vec2});
 				
-				# do something with $vec1 and $vec2
-				# and return() the result to be minimized by simplex.
+				 # do something with $vec1 and $vec2
+				 # and return() the result to be minimized by simplex.
 			},
-		log => sub { }, # log callback
-		ssize => 0.1,   # initial simplex size, smaller means less perturbation
-		max_iter => 100 # max iterations
+		log => sub { },  # log callback
+		max_iter => 100, # max iterations
+
+		# simplex-specific options:
+		opts => {
+			# initial simplex size, smaller means less perturbation
+			ssize => 0.1,   
+		},
 	);
 
 
@@ -1543,8 +1560,11 @@ the best result as the input to the next simplex iteration in an attempt
 to find increasingly better results.  For example, 4 iterations with each
 C<ssize> one-half of the previous:
 
-	ssize => [ 4, 2, 1, 0.5 ]
+Note: C<ssize> is a simplex-specific option that must be placed in C<{opts}>:
 
+	opts => {
+		ssize => [ 4, 2, 1, 0.5 ]
+	}
 
 Default: 1
 
@@ -1621,6 +1641,13 @@ accurate but will take longer to complete.  However, it is still useful if you h
 computation (C<f>) and want to converge sooner for an initial first pass.  It is still recommended
 to run a final pass without C<reduce_search>.
 
+Note: C<reduce_search> is a simplex-specific option that must be placed in C<{opts}>:
+
+	opts => {
+		reduce_search => 1,
+		...
+	}
+
 =head1 BEST PRACTICES AND USE CASES
 
 =head2 Antenna Geometry: Use an array for the C<ssize> parameter from coarse to fine perturbation.
@@ -1652,7 +1679,9 @@ previous iteration finds a "good" (but not "great") result; the best minima
 from across all simplex passes is kept as the final result in case latter passes
 do not perform as well:
 
-	ssize => [ 0.090, 0.075, 0.050, 0.025, 0.012 ]
+	opts => {
+		ssize => [ 0.090, 0.075, 0.050, 0.025, 0.012 ]
+	}
 
 This allows us to optimize antenna gain from 10.2 dBi with a single pass to
 11.3 dBi after 5 passes, in addition to a much improved VSWR value.
@@ -1680,7 +1709,9 @@ that define its behavior (Kp, Ki, and Kd),  and the satellite tracking is
 			ki => 120,
 			kd => 5
 		},
-		ssize => 1,
+		opts => {
+			ssize => 1,
+		},
 		f => sub { 
 				my $vars = shift;
 				
@@ -1719,7 +1750,9 @@ this we used the extended variable format as follows:
 				perturb_scale => 1,
 			},
 		},
-		ssize => 1, # <- ssize is still set to 1 !
+		opts => {
+			ssize => 1, # <- ssize is still set to 1 !
+		},
 		f => sub { 
 				my $vars = shift;
 				
