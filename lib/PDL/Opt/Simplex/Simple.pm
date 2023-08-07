@@ -721,12 +721,12 @@ sub _simple_to_expanded
 
 				my ($min, $max) = @$mm;
 
-				if ($var->{values}->[$i] < $min)
+				if ($var->{enabled}->[$i] && $var->{values}->[$i] < $min)
 				{
 					die "initial value for $var_name\[$i] below min constraint: $var->{values}->[$i] < $min " 
 				}
 
-				if ($var->{values}->[$i] >= $max)
+				if ($var->{enabled}->[$i] && $var->{values}->[$i] >= $max)
 				{
 					die "initial value for $var_name\[$i] beyond max constraint: $var->{values}->[$i] >= $max "
 				}
