@@ -248,6 +248,18 @@ sub _simplex_f
 {
 	my ($self, $vec) = @_;
 
+	my $var_min = $self->_build_simplex_var_min();
+	my $var_max = $self->_build_simplex_var_max();
+
+	if (defined($var_min) && defined($var_max))
+	{
+		my $vec_new = $vec;
+		$vec_new = !($vec_new < $var_min) * $vec_new + ($vec_new < $var_min)*$var_min;
+		$vec_new = !($vec_new > $var_max) * $vec_new + ($vec_new > $var_max)*$var_max;
+
+		$vec .= $vec_new;
+	}
+
 	my @vars = $self->_get_simplex_vars($vec);
 
 	die "BUG: _vars_are_pdl but \@vars > 1!" if $self->{_vars_are_pdl} and @vars > 1;
@@ -503,6 +515,70 @@ sub _build_simplex_vars
 	return $pdl;
 }
 
+# build a pdl of variable attributes by attribute name
+#    See `Expanded "vars" Format` for vars.  For example:
+#    - value
+#    - minmax
+#    - perturb_scale
+#  returns undef if any var attributes are undefined.
+sub _build_simplex_var_attrs
+{
+	my ($self, $name) = @_;
+
+	my $any_undef;
+
+	my $pdl = $self->_build_enabled_var_list(sub {
+			my $var = shift;
+			if (!defined($var->{$name}))
+			{
+				$any_undef++;
+				return 0;
+			}
+			else
+			{
+				return $var->{$name};
+			}
+		});
+
+	return undef if ($any_undef);
+
+	return $pdl;
+}
+
+# return a piddle of min values for each var, or undef if minmax is undefined.
+sub _build_simplex_var_min
+{
+	my ($self) = @_;
+
+	my $mm = $self->_build_simplex_var_attrs('minmax');
+
+	if (defined($mm))
+	{
+		return $mm->slice(0)->clump(-1);
+	}
+	else
+	{
+		return undef;
+	}
+}
+
+# return a piddle of max values for each var, or undef if minmax is undefined.
+sub _build_simplex_var_max
+{
+	my ($self) = @_;
+
+	my $mm = $self->_build_simplex_var_attrs('minmax');
+
+	if (defined($mm))
+	{
+		return $mm->slice(1)->clump(-1);
+	}
+	else
+	{
+		return undef;
+	}
+}
+
 sub _simple_to_expanded
 {
 	my ($vars) = @_;
@@ -635,12 +711,12 @@ sub _simple_to_expanded
 
 				if ($var->{values}->[$i] < $min)
 				{
-					die "initial value for $var_name\[$i] beyond constraint: $var->{values}->[$i] < $min " 
+					die "initial value for $var_name\[$i] below min constraint: $var->{values}->[$i] < $min " 
 				}
 
-				if ($var->{values}->[$i] > $max)
+				if ($var->{values}->[$i] >= $max)
 				{
-					die "initial value for $var_name\[$i] beyond constraint: $var->{values}->[$i] > $max " 
+					die "initial value for $var_name\[$i] beyond max constraint: $var->{values}->[$i] >= $max "
 				}
 			}
 		}
