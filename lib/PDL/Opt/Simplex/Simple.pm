@@ -1072,7 +1072,7 @@ sub _get_simplex_vars
 
 		if (!$pdl_size)
 		{
-			die "pdl_size is undefined or zero, are you using any zero-dimension variable arrays?"
+			die "!pdl_size: did you define any variables? are there zero-dimension variable arrays?"
 		}
 
 		# Now that we know the $pdl_size, make PDLs of the right size for any non-PDLs
