@@ -914,13 +914,6 @@ sub _get_simplex_var
 			$val = $var->{values}->[$i];
 		}
 
-		# Modify the resulting value depending on these rules:
-		if (defined($var->{minmax}))
-		{
-			my ($min, $max) = @{ $var->{minmax}->[$i] };
-			$val = clamp_minmax($val, $min => $max, $var_name);
-		}
-
 		# Round to the nearest value on each iteration.
 		# It is probably best to round at the end to keep
 		# precision during each iteration, but the option
@@ -928,6 +921,13 @@ sub _get_simplex_var
 		if (defined($var->{round_each}))
 		{
 			$val = pdl_nearest($var->{round_each}->[$i], $val, $var_name);
+		}
+
+		# Modify the resulting value depending on these rules:
+		if (defined($var->{minmax}))
+		{
+			my ($min, $max) = @{ $var->{minmax}->[$i] };
+			$val = clamp_minmax($val, $min => $max, $var_name);
 		}
 
 		push @ret, $val; 
