@@ -267,7 +267,19 @@ sub _simplex_f
 	{
 		my $vec_new = $vec;
 		$vec_new = !($vec_new < $var_min) * $vec_new + ($vec_new < $var_min)*$var_min;
-		$vec_new = !($vec_new > $var_max) * $vec_new + ($vec_new > $var_max)*$var_max;
+
+		# PDL::Opt::Simplex uses a constant 0.00001 as (what appears to
+		# be) a minimum step size.  If the variable being optimized is
+		# clamped to the upper limit on the first iteration then it
+		# will fail almost immediately.  Thus, we clamp to
+		# ($var_max*1.0001) which seems to be just enough to prevent it
+		# from failing.  If you notice optimization failures due to
+		# this clamping code then try these:
+		#   1. Change the value of round_each (if any)
+		#   2. Increase your max value so it doesn't go too high
+		#   3. Remove your min/max constraint
+		#   4. Change the 1.0001 value on this line:
+		$vec_new = !($vec_new > $var_max) * $vec_new + ($vec_new > $var_max)*$var_max*1.0001;
 
 		$vec .= $vec_new;
 	}
@@ -726,9 +738,9 @@ sub _simple_to_expanded
 					die "initial value for $var_name\[$i] below min constraint: $var->{values}->[$i] < $min " 
 				}
 
-				if ($var->{enabled}->[$i] && $var->{values}->[$i] >= $max)
+				if ($var->{enabled}->[$i] && $var->{values}->[$i] > $max)
 				{
-					die "initial value for $var_name\[$i] beyond max constraint: $var->{values}->[$i] >= $max "
+					die "initial value for $var_name\[$i] beyond max constraint: $var->{values}->[$i] > $max "
 				}
 			}
 		}
@@ -1408,6 +1420,11 @@ Expanded format:
 =item C<minmax>:  a double-array of min-max pairs (per index for vectors)
 
 Min-max pairs are clamped before being evaluated by simplex.
+
+Note: for internal PDL::Opt::Simplex reasons, the C<max> value is increased as
+C<$var_max*1.0001>, or one ten-thousandth bigger than the max value you
+request.  See the comment at the top of
+C<PDL::Opt::Simplex::Simple-E<gt>_simplex_f()> for details
 
 =item C<round_result>:  Round the value to the nearest increment of this value upon completion
 
