@@ -188,24 +188,9 @@ sub _optimize
 
 	# Catch early cancellation
 	eval {
-		($vec_optimal, $opt_ssize, $optval) = simplex($vec_initial,
-			$self->{opts}{ssize},
-			$self->{tolerance},
-			$self->{max_iter},
-
-			# We need to lambda $self into place for the f() and log() callbacks:
-			sub {
-				my ($vec) = @_;
-				return $self->_simplex_f($vec);
-			},
-
-			# log callback
-			sub {
-				my ($vec, $vals, $ssize) = @_;
-				$self->_simplex_log(@_);
-			}
-		);
+		( $vec_optimal, $opt_ssize, $optval ) = $self->__optimize($vec_initial);
 	};
+
 	my $err = $@;
 
 	if (!$err)
@@ -252,6 +237,37 @@ sub _optimize
 	$self->{result} = $result;
 
 	return $result;
+}
+
+# This is called by _optimize, it does the real work.  This
+# is the function that other classes could override to implement
+# other optimization algorithms:
+sub __optimize
+{
+	my ($self, $vec_initial) = @_;
+
+	my ( $vec_optimal, $opt_ssize, $optval );
+
+	($vec_optimal, $opt_ssize, $optval) = simplex($vec_initial,
+		$self->{opts}{ssize},
+		$self->{tolerance},
+		$self->{max_iter},
+
+		# We need to lambda $self into place for the f() and log() callbacks:
+		sub {
+			my ($vec) = @_;
+			return $self->_simplex_f($vec);
+		},
+
+		# log callback
+		sub {
+			my ($vec, $vals, $ssize) = @_;
+			$self->_simplex_log(@_);
+		}
+	);
+
+
+	return ($vec_optimal, $opt_ssize, $optval);
 }
 
 # This is the simplex callback to evaluate the function "f()"
