@@ -195,6 +195,8 @@ sub init
 		unless all($self->{posMax} > $self->{posMin});
 	$self->{$_} > 0 or die "-$_ must be greater then 0" for qw/numParticles/;
 
+	$self->{_seq_numNeighbors} = sequence($self->{numNeighbors});
+	$self->{_seq_numParticles} = sequence($self->{numParticles});
 	return 1;
 }
 
@@ -370,37 +372,46 @@ sub _moveParticles
 	# might be able to refactor this without the loop using a mask:
 	for (my $i = 0 ; $i < $self->{numParticles} ; $i++)
 	{
-		my $pos = $prtcls->{currPos}->slice(':', $i);
 		my $fit = $prtcls->{currFit}->slice(0,   $i);
-		my $v = $prtcls->{velocity}->slice(0, $i);
+		my $sfit = $fit->sclr;
 
-		my $bestpos = $prtcls->{bestPos}->slice(':', $i);
 		my $bestfit = $prtcls->{bestFit}->slice(0,   $i);
+		my $sbestfit = $bestfit->sclr;
 
-		if ($fit < $bestfit)
+		if ($sfit < $sbestfit)
 		{
+			my $bestpos = $prtcls->{bestPos}->slice(':', $i);
+			my $pos = $prtcls->{currPos}->slice(':', $i);
+
 			$bestpos .= $pos;
 			$bestfit .= $fit;
 
 			if ($self->{verbose} & kLogBetter)
 			{
+				my $v = $prtcls->{velocity}->slice(0, $i);
 				my $vmag = sqrt(sum($v**2));
 				printf "#%05d: Particle $i best: %.4f (vel: %.3f)\n",
 					$iter, $fit->sclr, $vmag->sclr;
 			}
 
-			if (!defined($self->{bestBest}) || $fit < $self->{bestBest})
+			if (!defined($self->{bestBest}) || $sfit < $self->{bestBest})
 			{
-				$self->{bestBest}    = $fit->copy;
+				# bestBest doesn't need to be scalar, but it performs
+				# better since it is a 1,1-piddle that needs evaluated.
+				$self->{bestBest}    = $fit->sclr;
+
+				# However, this does need to be a piddle.  Copy for safety:
 				$self->{bestBestPos} = $pos->copy;
 			}
 
 		}
 
-		return $fit if defined $self->{exitFit} and $fit < $self->{exitFit};
+		return $fit if defined $self->{exitFit} and $sfit < $self->{exitFit};
 
 		if ($self->{verbose} & kLogIter)
 		{
+			my $v = $prtcls->{velocity}->slice(0, $i);
+			my $pos = $prtcls->{currPos}->slice(':', $i);
 			printf "Part %3d fit %8.2f (%s @ %s)\n", $i, $fit->sclr, $v->clump(-1),
 				$pos->clump(-1);
 		}
@@ -446,8 +457,12 @@ sub _updateVelocities
 	{
 		$stalled = $stalled->clump(-1);
 
-		printf "#%05d: Particles stalled: $stalled (v=%s)\n", $iter, $vel * $stalled
-			if $self->{verbose} & kLogStall;
+		if ($self->{verbose} & kLogStall)
+		{
+			printf "#%05d: Particles stalled: $stalled (v=%s)\n",
+				$iter,
+				$vel * $stalled * $self->{_seq_numParticles};
+		}
 
 		$self->_initParticles($stalled);
 	}
@@ -488,14 +503,14 @@ sub _getBestNeighbour
 
 	# take the best fits and select a numNeighbors chunks
 	# that is offset by $me.
-	my $bestfits = $self->{prtcls}{bestFit}->copy->clump(-1);
+	my $bestfits = $self->{prtcls}{bestFit}->clump(-1);
 	$bestfits = $bestfits->index(
-		(sequence($self->{numNeighbors}) + $me + 1) % $self->{numParticles});
+		($self->{_seq_numNeighbors} + ($me+1)) % $self->{numParticles});
 
 	# Find it's minimum index and re-work the original index to return the
 	# index into $self->{prtcls}{bestFit}:
-	my $small_idx = minimum_ind($bestfits);
-	my $orig_idx  = ($small_idx + $me + 1) % 10;
+	my $small_idx = minimum_ind($bestfits)->sclr;
+	my $orig_idx  = ($small_idx + $me + 1) % $self->{numParticles};
 
 	return $orig_idx;
 }
@@ -523,7 +538,9 @@ sub getBestFit
 		return $self->{prtcls}->{bestFit}->slice(':', $min)->clump(-1);
 	}
 
-	return $self->{bestBest}->clump(-1);
+	# Internally this is scalar for faster comparison,
+	# but externally the caller expects a piddle:
+	return pdl $self->{bestBest};
 }
 
 # For debugging, but requires Data::Dumper which we are not marking as a
