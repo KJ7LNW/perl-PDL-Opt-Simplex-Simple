@@ -73,7 +73,7 @@ my $simpl = PDL::Opt::Simplex::Simple->new(
 			my $v = shift;
 			$count++;
 			
-			# Parabola with minima at x = -3
+			# Parabola with minima at x=-3,y=-7 == -14
 			return (($v->{x}+3)**2 - 5) + (($v->{y}+7)**2 - 9);
 		},
 	log => sub {
