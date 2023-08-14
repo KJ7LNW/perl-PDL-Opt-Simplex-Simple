@@ -1281,8 +1281,10 @@ PDL::Opt::Simplex::Simple - A simplex optimizer for the rest of us
 			x => 1 
 		},
 		f => sub { 
+				my $vars = shift;
+
 				# Parabola with minima at x = -3
-				return (($_->{x}+3)**2 - 5) 
+				return (($vars->{x}+3)**2 - 5)
 			}
 	);
 
