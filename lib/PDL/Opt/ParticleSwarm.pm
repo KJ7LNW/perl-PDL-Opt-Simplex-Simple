@@ -96,6 +96,7 @@ sub setParams
 		posMin
 		randStartVelocity
 		stallSpeed
+		stallSearchScale
 		themWeight
 		verbose
 		initialGuess
@@ -155,6 +156,7 @@ sub setParams
 	$self->{inertia}    ||= 0.9;
 	$self->{verbose}    ||= 0;
 	$self->{stallSpeed} ||= 1e-9;
+	$self->{stallSearchScale} ||= 1;
 
 	$self->{posMin} = pdl([$self->{posMin}]) if (ref($self->{posMin}) !~ /^PDL(:|$)/);
 	$self->{posMax} = pdl([$self->{posMax}]) if (ref($self->{posMax}) !~ /^PDL(:|$)/);
@@ -180,7 +182,6 @@ sub init
 
 	$self->{deltaMax} = ($self->{posMax} - $self->{posMin}) / 100.0;
 
-	$self->_initParticles();
 	$self->{iterCount} = 0;
 
 	# Normalise weights.
@@ -197,6 +198,8 @@ sub init
 
 	$self->{_seq_numNeighbors} = sequence($self->{numNeighbors});
 	$self->{_seq_numParticles} = sequence($self->{numParticles});
+
+	$self->_initParticles();
 	return 1;
 }
 
@@ -229,7 +232,12 @@ sub _initParticles
 		currFit => zeroes(1, $self->{numParticles}) + inf,
 		nextFit => zeroes(1, $self->{numParticles}) + inf,
 
+		# Count the number of stalls a particle has experienced.
+		# Start at -1 because it gets incremented below.
+		stalls => zeroes(1, $self->{numParticles}) -1,
+
 		velocity => zeroes($self->{dimensions}, $self->{numParticles}),
+
 		};
 
 	$mask //= ones($self->{numParticles});
@@ -265,15 +273,27 @@ sub _initParticles
 				$self->{dimensions}, $numParticles);
 	}
 
-	my $guess = $self->{bestBestPos} // $self->{initialGuess};
-	if (defined($self->{searchSize}) && defined($guess))
+	if (defined($self->{searchSize}))
 	{
+		my $guess;
+		if (defined($self->{initialGuess}) && $self->{iterCount} == 0)
+		{
+			# Use the initial guess only initially (iterCount==0)
+			$guess = $self->{initialGuess};
+		}
+		else
+		{
+			$guess = $prtcls->{currPos};
+		}
 
-		# Search $guess +/- searchSize% of the search range from posMin to posMax:
-		$prtcls->{currPos} .=
-			$guess + $self->{searchSize} *
-			($self->{posMax} - $self->{posMin}) *
-				(1 - 2*random($self->{dimensions}, $numParticles));
+		$prtcls->{stalls} += 1;
+		my $searchSize = $self->{searchSize} * ($self->{stallSearchScale}**$prtcls->{stalls});
+
+		# Search $guess +/- (searchSize% of the search range from posMin to posMax:
+		$prtcls->{currPos} .= $guess +
+			$searchSize *
+				($self->{posMax} - $self->{posMin}) *
+					(1 - 2*random($self->{dimensions}, $numParticles));
 	}
 	else
 	{
@@ -388,9 +408,9 @@ sub _moveParticles
 
 			if ($self->{verbose} & kLogBetter)
 			{
-				my $v = $prtcls->{velocity}->slice(0, $i);
+				my $v = $prtcls->{velocity}->slice(':', $i);
 				my $vmag = sqrt(sum($v**2));
-				printf "#%05d: Particle $i best: %.4f (vel: %.3f)\n",
+				printf "#%05d: Particle $i best: %.4f (v: %.5f)\n",
 					$iter, $fit->sclr, $vmag->sclr;
 			}
 
@@ -410,10 +430,11 @@ sub _moveParticles
 
 		if ($self->{verbose} & kLogIter)
 		{
-			my $v = $prtcls->{velocity}->slice(0, $i);
+			my $v = $prtcls->{velocity}->slice(':', $i);
+			my $vmag = sqrt(sum($v**2))->sclr;
 			my $pos = $prtcls->{currPos}->slice(':', $i);
-			printf "Part %3d fit %8.2f (%s @ %s)\n", $i, $fit->sclr, $v->clump(-1),
-				$pos->clump(-1);
+			printf "Part %3d fit %15.2f (vmag=%8.6f pos=%s)\n", $i, $fit->sclr,
+				$vmag, $pos->clump(-1);
 		}
 	}
 
@@ -459,9 +480,16 @@ sub _updateVelocities
 
 		if ($self->{verbose} & kLogStall)
 		{
-			printf "#%05d: Particles stalled: $stalled (v=%s)\n",
+			my $stall_count = $prtcls->{stalls}->clump(-1);
+			my $searchSize = $self->{searchSize} * ($self->{stallSearchScale}**$prtcls->{stalls});
+			$searchSize = $searchSize->clump(-1);
+
+			printf "#%05d: Particles stalled: %s count=%s searchSize=%s v=%s\n",
 				$iter,
-				$vel * $stalled * $self->{_seq_numParticles};
+				$stalled * $self->{_seq_numParticles},
+				$stalled * $stall_count,
+				$stalled * $searchSize,
+				$vel * $stalled;
 		}
 
 		$self->_initParticles($stalled);
@@ -793,8 +821,36 @@ Speed below which a particle is considered to be stalled and is repositioned to
 a new random location with a new initial speed.  This can be a PDL object, so
 it should work in any dimension so long as it works in the broadcast sense.
 
-By default I<-stallSpeed> is undefined but particles with a speed of 0 will be
+By default I<-stallSpeed> is undefined but particles with a speed of 1e-9 will be
 repositioned.
+
+=item I<-stallSearchScale>: positive number, optional
+
+If a particle stalls, then jump to a random location that exists +/-
+C<searchSize%> of the current location, but increase C<searchSize%>
+for that particle by C<stallSearchScale> after each stall:
+
+	$searchSize = $searchSize * ($stallSearchScale ** $numStalls)
+
+Default: 1 (does not change C<searchSize>).
+
+A recommended value is that which will slightly increase C<searchSize>
+over time.  For example, if C<stallSearchScale = 1.1> and C<searchSize =
+0.5> then C<searchSize> will change for that particle as follows:
+
+	Stalls                  searchSize
+	------                  ----------
+	  0                        0.5        # initial configured value
+	  1                        0.55
+	  2                        0.605
+	  3                        0.6655
+	  5                        0.8053
+	  7                        0.9744
+
+In this example, C<searchSize> will be capped at a value of 1.0
+after the particle stalls 8 times.
+
+See also: I<-searchSize>
 
 =item I<-themWeight>: number, optional
 
