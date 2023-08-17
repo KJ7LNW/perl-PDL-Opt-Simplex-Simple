@@ -107,6 +107,13 @@ callback function.
     Useful for calling simplex again with refined values
 
 - $self->scale\_ssize($scale) - Multiply the current `ssize` by `$scale`
+- dumpify($vars)
+
+    This is for debugging:
+
+    Builds a tree from `$vars` that is suitable for passing to [Data::Dumper](https://metacpan.org/pod/Data::Dumper).  This is
+    neccesary because PDL's need to be stringified since Dumper() will dump at the
+    object itself.
 
 # ARGUMENTS
 
