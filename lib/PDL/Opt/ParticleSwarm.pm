@@ -52,6 +52,45 @@ sub setParams
 {
 	my ($self, %params) = @_;
 
+	my %valid_params = map { $_ => 1 } qw/
+		fitFunc
+		logFunc
+
+		dimensions
+		initialGuess
+
+		numParticles
+		numNeighbors
+		iterations
+
+		posMax
+		posMin
+
+		searchSize
+
+		stallSpeed
+		stallSearchScale
+
+		meWeight
+		themWeight
+		inertia
+
+		exitFit
+		exitPlateau
+		exitPlateauBurnin
+		exitPlateauDP
+		exitPlateauWindow
+
+		randStartVelocity
+
+		verbose
+		/;
+
+	foreach my $p (map { s/^-//; $_ } keys(%params))
+	{
+		die "invalid parameter: $p" if !$valid_params{$p};
+	}
+
 	if (defined $params{-fitFunc})
 	{
 		# Process required parameters - -fitFunc and -dimensions
@@ -80,29 +119,7 @@ sub setParams
 			and defined $self->{dimensions}
 			and $params{-dimensions} != $self->{dimensions};
 
-	$self->{$_} = $params{"-$_"} for grep { exists $params{"-$_"} } qw/
-		dimensions
-		exitFit
-		exitPlateau
-		exitPlateauDP
-		exitPlateauWindow
-		exitPlateauBurnin
-		inertia
-		iterations
-		meWeight
-		numNeighbors
-		numParticles
-		posMax
-		posMin
-		randStartVelocity
-		stallSpeed
-		stallSearchScale
-		themWeight
-		verbose
-		initialGuess
-		searchSize
-		/;
-
+	$self->{$_} = $params{"-$_"} for (grep { exists $params{"-$_"} } keys(%valid_params));
 	if (defined($self->{initialGuess}) && ref($self->{initialGuess}) !~ /^PDL(:|$)/)
 	{
 		die "-initialGuess must be a PDL reference";
