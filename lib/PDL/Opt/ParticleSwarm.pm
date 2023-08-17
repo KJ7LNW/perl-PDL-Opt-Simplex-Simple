@@ -290,6 +290,8 @@ sub _initParticles
 				$self->{dimensions}, $numParticles);
 	}
 
+	# This function is called on init or on stall, so always increment stalls:
+	$prtcls->{stalls} += 1;
 	if (defined($self->{searchSize}))
 	{
 		my $guess;
@@ -300,10 +302,9 @@ sub _initParticles
 		}
 		else
 		{
-			$guess = $prtcls->{currPos};
+			$guess = $prtcls->{bestPos};
 		}
 
-		$prtcls->{stalls} += 1;
 		my $searchSize = $self->{searchSize} * ($self->{stallSearchScale}**$prtcls->{stalls});
 
 		# Search $guess +/- (searchSize% of the search range from posMin to posMax:
@@ -586,6 +587,12 @@ sub getBestFit
 	# Internally this is scalar for faster comparison,
 	# but externally the caller expects a piddle:
 	return pdl $self->{bestBest};
+}
+
+sub getStallCount
+{
+	my $self = shift;
+	return $self->{prtcls}->{stalls};
 }
 
 # For debugging, but requires Data::Dumper which we are not marking as a
@@ -976,6 +983,12 @@ in hyper space.
 Return the number of iterations performed. This may be useful when the
 I<-exitFit> criteria has been met or where multiple calls to I<optimize> have
 been made.
+
+=item B<getStallCount()>
+
+Returns a PDL of stall counts per particle.
+
+Hint: to get a total stall count, call `$pso->getStallCount()->sum()` .
 
 =back
 

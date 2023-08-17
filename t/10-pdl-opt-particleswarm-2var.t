@@ -54,6 +54,7 @@ test("basic ops",
 	-logFunc => \&log,
 	-iterations => 4000,
 	-exitFit => -14 + 1e-9,
+	-stallSpeed => 1e-6,
 	);
 
 test("initial guess",
@@ -63,6 +64,7 @@ test("initial guess",
 	-iterations => 4000,
 	-initialGuess => pdl([0, 0]),
 	-exitFit => -14 + 1e-9,
+	-stallSpeed => 1e-6,
 	);
 
 test("constrained search",
@@ -74,6 +76,7 @@ test("constrained search",
 	-initialGuess => pdl([-5, -10]),
 	-posMin => -20,
 	-posMax => 20,
+	-stallSpeed => 1e-6,
 	);
 
 test("search size",
@@ -86,6 +89,7 @@ test("search size",
 	-posMin => -20,
 	-posMax => 20,
 	-searchSize => .5,
+	-stallSpeed => 1e-6,
 	);
 
 sub test
@@ -104,6 +108,7 @@ sub test
 
 	my $x = $vec_optimal->slice('(0)');
 	my $y = $vec_optimal->slice('(1)');
-	print "opt=($x,$y) -> minima=$optval - iterations=$iters log_count=$count\n";
+	my $stalls = $pso->getStallCount->sum;
+	print "opt=($x,$y) -> minima=$optval - iterations=$iters log_count=$count stalls=$stalls\n";
 	ok(all abs($x - (-3)) < 1e-3);
 }
