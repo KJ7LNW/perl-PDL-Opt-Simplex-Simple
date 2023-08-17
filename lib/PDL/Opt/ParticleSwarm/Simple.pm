@@ -134,6 +134,17 @@ documentation for full details.
 
 See L<PDL::Opt::ParticleSwarm> for options available above in C<opts>.
 
+=head1 SEE ALSO
+
+=over 4
+
+=item L<PDL::Opt::ParticleSwarm> - A PDL implementation of Particle Swarm
+
+=item L<PDL::Opt::Simplex::Simple> - Use names for Simplex-optimized values
+
+=item L<PDL::Opt::Simplex> - A PDL implementation of the Simplex optimization algorithm
+
+=back
 
 =head1 AUTHOR
 

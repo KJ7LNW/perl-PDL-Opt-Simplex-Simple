@@ -1867,17 +1867,23 @@ Patches welcome ;)
 
 =over 4
 
-=item Video about how optimization algorithms like Simplex work, visually: L<https://youtu.be/NI3WllrvWoc>
-
-=item Wikipedia Article: L<https://en.wikipedia.org/wiki/Simplex_algorithm>,
-
 =item PDL Implementation of Simplex: L<PDL::Opt::Simplex>, L<http://pdl.perl.org/>
 
 =item This modules github repository: L<https://github.com/KJ7LNW/perl-PDL-Opt-Simplex-Simple>
 
 =back
 
-=head2 Example links:
+=head2 References:
+
+=over 4
+
+=item Wikipedia Article: L<https://en.wikipedia.org/wiki/Simplex_algorithm>
+
+=item Video about how optimization algorithms like Simplex work, visually: L<https://youtu.be/NI3WllrvWoc>
+
+=back
+
+=head2 Examples:
 
 =over 4
 
@@ -1887,6 +1893,15 @@ Patches welcome ;)
 
 =back
 
+=head2 Other Optimization Implementations:
+
+=over 4
+
+=item L<PDL::Opt::ParticleSwarm> - A PDL implementation of Particle Swarm
+
+=item L<PDL::Opt::ParticleSwarm::Simple> - Use names for Particle Swarm-optimized values
+
+=back
 
 =head1 AUTHOR
 

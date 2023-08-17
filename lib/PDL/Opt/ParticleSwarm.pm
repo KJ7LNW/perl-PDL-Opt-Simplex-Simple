@@ -996,6 +996,12 @@ Hint: to get a total stall count, call `$pso->getStallCount()->sum()` .
 
 =over
 
+=item L<PDL::Opt::ParticleSwarm::Simple> - Use names for Particle Swarm-optimized values
+
+=item L<PDL::Opt::Simplex> - A PDL implementation of the Simplex optimization algorithm
+
+=item L<PDL::Opt::Simplex::Simple> - Use names for Simplex-optimized values
+
 =item L<http://en.wikipedia.org/wiki/Particle_swarm_optimization>
 
 =item L<AI::ParticleSwarmOptimization>
