@@ -320,7 +320,7 @@ sub _simplex_f
 	if ($self->{opts}{reduce_search})
 	{
 		# Call the user's function and pass their vars.
-		my $ret = $self->call_f($vars[0]);
+		my $ret = $self->_call_f($vars[0]);
 
 		# @f_ret is the resulting weight, which is the same for _all_ vars:
 		push @f_ret, $ret foreach @vars;
@@ -331,7 +331,7 @@ sub _simplex_f
 		{
 			# Call the user's function and pass their vars.
 			# @f_ret is the resulting weight for _each_ var:
-			push @f_ret, $self->call_f($vars);
+			push @f_ret, $self->_call_f($vars);
 		}
 	}
 
@@ -634,7 +634,7 @@ sub _simple_to_expanded
 
 		# Copy the structure from what was passed into the %exp
 		# hash so we can modify it without changing the orignal.
-		if (is_numeric($var))
+		if (_is_numeric($var))
 		{
 			$var = $exp{$var_name} = { values => [ $vars->{$var_name} ] }
 		}
@@ -675,7 +675,7 @@ sub _simple_to_expanded
 			# make a copy to release the original reference: 
 			$var->{values} = [ @{ $var->{values} } ];
 		}
-		elsif (is_numeric($var->{values}))
+		elsif (_is_numeric($var->{values}))
 		{
 			$var->{values} = [ $var->{values} ];
 		}
@@ -689,16 +689,16 @@ sub _simple_to_expanded
 
 		# If enabled is missing or a non-scalar (ie =1 or =0) then form it properly
 		# as either all 1's or all 0's:
-		if (!defined($var->{enabled}) || (is_numeric($var->{enabled}) && $var->{enabled}))
+		if (!defined($var->{enabled}) || (_is_numeric($var->{enabled}) && $var->{enabled}))
 		{
 			$var->{enabled} = [ map { 1 } (1..$n) ] 
 		}
-		elsif (defined($var->{enabled}) && is_numeric($var->{enabled}) && !$var->{enabled})
+		elsif (defined($var->{enabled}) && _is_numeric($var->{enabled}) && !$var->{enabled})
 		{
 			$var->{enabled} = [ map { 0 } (1..$n) ] 
 		}
 
-		if (ref($var->{minmax}) eq 'ARRAY' && is_numeric($var->{minmax}->[0]) && @{$var->{minmax}} == 2)
+		if (ref($var->{minmax}) eq 'ARRAY' && _is_numeric($var->{minmax}->[0]) && @{$var->{minmax}} == 2)
 		{
 			$var->{minmax} = [ map { $var->{minmax} } (1..$n) ];
 		}
@@ -707,17 +707,17 @@ sub _simple_to_expanded
 		$var->{perturb_scale} //= [ map { 1 } (1..$n) ];
 
 		# Make it an array the of length $n:
-		if (is_numeric($var->{perturb_scale}))
+		if (_is_numeric($var->{perturb_scale}))
 		{
 			$var->{perturb_scale} = [ map { $var->{perturb_scale} } (1..$n) ] 
 		}
 
-		if (defined($var->{round_each}) && is_numeric($var->{round_each}))
+		if (defined($var->{round_each}) && _is_numeric($var->{round_each}))
 		{
 			$var->{round_each} = [ map { $var->{round_each} } (1..$n) ] 
 		}
 
-		if (defined($var->{round_result}) && is_numeric($var->{round_result}))
+		if (defined($var->{round_result}) && _is_numeric($var->{round_result}))
 		{
 			$var->{round_result} = [ map { $var->{round_result} } (1..$n) ] 
 		}
@@ -785,7 +785,7 @@ sub _expanded_to_simple
 		{
 			$h{$var} = $vars->{$var};
 		}
-		elsif (is_numeric($vars->{$var}))
+		elsif (_is_numeric($vars->{$var}))
 		{
 			$h{$var} = [ $vars->{$var} ];
 		}
@@ -816,7 +816,7 @@ sub _expanded_to_original
 	my %result;
 	foreach my $var_name (keys(%$orig))
 	{
-		if (is_numeric($orig->{$var_name}))
+		if (_is_numeric($orig->{$var_name}))
 		{
 			$result{$var_name} = $exp->{$var_name}->{values}->[0];
 		}
@@ -865,16 +865,16 @@ sub _vars_round_result
 		next unless defined $var->{round_result};
 
 		# In case values it not an array:
-		if (is_numeric($var->{values}))
+		if (_is_numeric($var->{values}))
 		{
-			$var->{values} = pdl_nearest($var->{round_result}, $var->{values}, 'round_result');
+			$var->{values} = _pdl_nearest($var->{round_result}, $var->{values}, 'round_result');
 			next;
 		}
 
 		my $n = @{ $var->{values} };
 
 		# use temp var @round_result so we don't mess with the $vars structure.
-		if (is_numeric($var->{round_result}))
+		if (_is_numeric($var->{round_result}))
 		{
 			@round_result = map { $var->{round_result} } (1..$n);
 		}
@@ -886,7 +886,7 @@ sub _vars_round_result
 		# Round to a precision if defined:
 		foreach (my $i = 0; $i < $n; $i++)
 		{
-			$var->{values}->[$i] = pdl_nearest($round_result[$i], $var->{values}->[$i], 'round_result');
+			$var->{values}->[$i] = _pdl_nearest($round_result[$i], $var->{values}->[$i], 'round_result');
 		}
 	}
 
@@ -950,14 +950,14 @@ sub _get_simplex_var
 		# is available:
 		if (defined($var->{round_each}))
 		{
-			$val = pdl_nearest($var->{round_each}->[$i], $val, $var_name);
+			$val = _pdl_nearest($var->{round_each}->[$i], $val, $var_name);
 		}
 
 		# Modify the resulting value depending on these rules:
 		if (defined($var->{minmax}))
 		{
 			my ($min, $max) = @{ $var->{minmax}->[$i] };
-			$val = clamp_minmax($val, $min => $max, $var_name);
+			$val = _clamp_minmax($val, $min => $max, $var_name);
 		}
 
 		push @ret, $val; 
@@ -966,7 +966,7 @@ sub _get_simplex_var
 	return \@ret;
 }
 
-sub pdl_nearest
+sub _pdl_nearest
 {
 	my ($nearest, $val, $noun) = @_;
 
@@ -986,13 +986,13 @@ sub pdl_nearest
 		# It would be helpful if PDL had a native nearest() impelementation.
 
 		my $idx = 0;
-		$val = pdl_map(sub { nearest($nearest, $_[0]) }, $val);
+		$val = _pdl_map(sub { nearest($nearest, $_[0]) }, $val);
 	}
 
 	return $val;
 }
 
-sub pdl_map
+sub _pdl_map
 {
 	my ($sub, $val) = @_;
 	my @slices;
@@ -1023,7 +1023,7 @@ sub pdl_map
 	return $val;
 }
 
-sub clamp_minmax
+sub _clamp_minmax
 {
 	my ($val, $min, $max) = @_;
 
@@ -1169,14 +1169,7 @@ sub _get_simplex_vars
 	return @ret;
 }
 
-sub get_best_simplex_vars
-{
-	my $self = shift;
-
-	return $self->_get_simplex_vars($self->{best_vec});
-}
-
-sub var_cache
+sub _var_cache
 {
 	my ($self, $vars, $value) = @_;
 
@@ -1186,7 +1179,7 @@ sub var_cache
 	foreach my $var_name (sort keys(%$vars))
 	{
 		$key .= "$var_name=";
-		if (is_numeric($vars->{$var_name}))
+		if (_is_numeric($vars->{$var_name}))
 		{
 			$key .= $vars->{$var_name}
 		}
@@ -1220,25 +1213,25 @@ sub var_cache
 	}
 }
 
-sub call_f
+sub _call_f
 {
 	my ($self, $vars) = @_;
 
 	$self->{iter_count}++;
 
 	# Try to use a cached result:
-	my $result = $self->var_cache($vars);
+	my $result = $self->_var_cache($vars);
 
 	if (!defined($result))
 	{
 		$result = $self->{f}->($vars);
-		$self->var_cache($vars => $result);
+		$self->_var_cache($vars => $result);
 	}
 
 	return $result;
 }
 
-sub is_numeric
+sub _is_numeric
 {
 	my $var = shift;
 	return (!ref($var) || ref($var) eq 'PDL')
@@ -1385,6 +1378,14 @@ a new refined simplex iteration.
 Useful for calling simplex again with refined values
 
 =item * $self->scale_ssize($scale) - Multiply the current C<ssize> by C<$scale>
+
+=item * dumpify($vars)
+
+This is for debugging:
+
+Builds a tree from C<$vars> that is suitable for passing to L<Data::Dumper>.  This is
+neccesary because PDL's need to be stringified since Dumper() will dump at the
+object itself.
 
 =back
 
