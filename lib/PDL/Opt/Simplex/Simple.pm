@@ -41,7 +41,6 @@ sub new
 		qw/f log vars
 			max_iter
 			nocache
-			tolerance
 			srand
 			stagnant_minima_count
 			stagnant_minima_tolerance
@@ -64,10 +63,24 @@ sub new
 			$args{opts}{ssize} = $ssize;
 		}
 
+		my $tolerance = delete $args{tolerance};
+		if ($tolerance)
+		{
+			warn "deprecation: tolerance should be secified as new(opts => {tolerance => $tolerance})";
+			if (defined($args{opts}{tolerance}))
+			{
+				die "you cannot specify both 'tolerance => $tolerance' and 'opts => { tolerance=>X }'";
+			}
+
+			$args{opts}{tolerance} = $tolerance;
+		}
+
 		$args{opts}{ssize} //= 1;
+		$args{opts}{tolerance}                 //=  1e-6;
 
 		my %valid_simplex_opts = map { $_ => 1 }
 				qw/	ssize
+					tolerance
 					reduce_search
 				/;
 
@@ -86,7 +99,6 @@ sub new
 
 	my $self = bless(\%args, $class);
 
-	$self->{tolerance}                 //=  1e-6;
 	$self->{max_iter}                  //=  1000;
 	$self->{stagnant_minima_tolerance} //= $self->{tolerance};
 	
@@ -141,6 +153,9 @@ sub optimize
 	delete $self->{best_vars};
 	delete $self->{best_vec};
 	delete $self->{best_pass};
+
+	$self->{cache_hits} = 0;
+	$self->{cache_misses} = 0;
 
 	if (@{ $self->{_ssize} } == 1)
 	{
@@ -251,7 +266,7 @@ sub __optimize
 
 	($vec_optimal, $opt_ssize, $optval) = simplex($vec_initial,
 		$self->{opts}{ssize},
-		$self->{tolerance},
+		$self->{opts}{tolerance},
 		$self->{max_iter},
 
 		# We need to lambda $self into place for the f() and log() callbacks:
@@ -1629,6 +1644,12 @@ Default: 1000
 
 The default is 1e-6.  It tells Simplex to stop before C<max_iter> if 
 very little change is being made between iterations.
+
+Note: C<tolerance> is a simplex-specific option that must be placed in C<{opts}>:
+
+	opts => {
+		tolerance => 1e-3
+	}
 
 Default: 1e-6
 

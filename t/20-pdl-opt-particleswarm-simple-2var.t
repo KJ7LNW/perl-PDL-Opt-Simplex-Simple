@@ -66,9 +66,9 @@ my $simpl = PDL::Opt::ParticleSwarm::Simple->new(
 			minmax => [[-35 => 50]]
 		},
         },
-	opts => { },
-	max_iter => 100,
-	tolerance => 1e-6,
+	opts => {
+	},
+	max_iter => 1000,
         f => sub {
 			my $v = shift;
 			$count++;
