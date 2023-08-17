@@ -135,6 +135,7 @@ sub optimize
 
 	$self->{optimization_pass} = 1;
 	$self->{log_count} = 0;
+	$self->{iter_count} = 0;
 
 	delete $self->{best_minima};
 	delete $self->{best_vars};
@@ -423,6 +424,7 @@ sub _simplex_log
 		best_minima => $self->{best_minima}->sclr,
 		best_vars => $self->{best_vars},
 		log_count => $self->{log_count},
+		iter_count => $self->{iter_count},
 		cancel => $self->{cancel},
 		prev_minima_count => $self->{prev_minima_count},
 		cache_hits => $self->{cache_hits},
@@ -1222,6 +1224,8 @@ sub call_f
 {
 	my ($self, $vars) = @_;
 
+	$self->{iter_count}++;
+
 	# Try to use a cached result:
 	my $result = $self->var_cache($vars);
 
@@ -1564,7 +1568,8 @@ values are available in the C<$state> hashref:
 	'best_pass' =>  3,              # the pass# that had the best goal result
 	'best_minima' => 0.2345         # The least value so far, returned by "f"
 	'best_vars' => { x=>1, ...}     # The vars associated with "best_minima"
-	'log_count' => 22,              # number of times log has been called
+	'log_count' => 22,              # number of times log has been called in this pass
+	'iter_count' => 123,            # number of f() has been called (including cache hits)
 	'prev_minima_count' => 10,      # number of same minima's in a row
 	'cancel' =>     0,              # true if the simplex iteration is being cancelled
 	'all_vars' => [{x=>1},...],     # multiple var options from simplex are logged here
