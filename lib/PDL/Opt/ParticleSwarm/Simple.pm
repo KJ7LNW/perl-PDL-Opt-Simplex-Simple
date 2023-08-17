@@ -76,6 +76,7 @@ sub __optimize
 
 1;
 
+__END__
 
 
 =head1 NAME
@@ -126,9 +127,15 @@ all scalar Perl values. (PDL values are supported, too)
 
 =head1 FUNCTIONS
 
+=over 4
+
+=item * $self->new(opts => \%args) - Instantiate class
+
 This is a subclass implementation of Particle Swarm based on
-L<PDL::Opt::Simplex::Simple>, so please see the L<PDL::Opt::Simplex::Simple>
-documentation for full details.
+L<PDL::Opt::Simplex::Simple>.  Many other features are available, so please see
+the L<PDL::Opt::Simplex::Simple> documentation for full details.
+
+=back
 
 =head1 OPTIONS
 

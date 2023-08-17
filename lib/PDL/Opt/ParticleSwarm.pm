@@ -275,7 +275,7 @@ sub _initParticles
 	if ($mask->sum != $numParticles)
 	{
 		printf "mask size != particles size: mask=$mask, numParticles=$numParticles";
-		#printPrtcls($prtcls);
+		#_printPrtcls($prtcls);
 		die;
 	}
 
@@ -598,7 +598,7 @@ sub getStallCount
 # For debugging, but requires Data::Dumper which we are not marking as a
 # dependency.  Still it shouldn't be necessary as a dep because (I think) it is
 # in the standard perl distribution.
-sub printPrtcls
+sub _printPrtcls
 {
 	require Data::Dumper;
 
@@ -606,7 +606,7 @@ sub printPrtcls
 	print ref($p) . "\n";
 	if (ref($p) eq 'ARRAY')
 	{
-		return [ map { printPrtcls($_) } @$p ];
+		return [ map { _printPrtcls($_) } @$p ];
 	}
 	elsif (ref($p) eq 'CODE')
 	{
@@ -619,7 +619,7 @@ sub printPrtcls
 				map {
 					$_ => ref($p->{$_}) eq 'PDL'
 						? "$p->{$_}"
-						: (ref($p->{$_}) ? printPrtcls($p->{$_}) : $p->{$_})
+						: (ref($p->{$_}) ? _printPrtcls($p->{$_}) : $p->{$_})
 				} keys(%{$p})
 			}
 			);
@@ -633,6 +633,7 @@ sub printPrtcls
 
 1;
 
+__END__
 
 =head1 NAME
 
@@ -710,7 +711,6 @@ region between 2.5 and 7.5.
 If undefined, then search the entire space between C<posMin> and C<posMax>
 
 Default value: undef
-
 
 =item I<-dimensions>: positive number, semi-required
 
@@ -960,23 +960,18 @@ B<optimize()> may be called repeatedly to continue the fitting process. The fit
 processing on each subsequent call will continue from where the last call left
 off.
 
-=item B<getParticleState()>
+Use C<getBestPos()> and C<getBestFit()> after optimization to get the optimized
+result.
 
-Returns the vector of position
+=item B<getBestPos()>
 
-=item B<getBestParticles([$n])>
+Return the best position vector that has been found so far, as determined by C<fitFunc>. 
+Use this after calling C<optimize()>.
 
-Takes an optional count.
+=item B<getBestFit()>
 
-Returns a list containing the best $n particle numbers. If $n is not specified
-only the best particle number is returned.
-
-=item B<getParticleBestPos($particleNum)>
-
-Returns a list containing the best value of the fit and the vector of its point
-in hyper space.
-
-    my ($fit, @vector) = $pso->getParticleBestPos (3)
+Return the fit value that has been found so far, as returned by C<fitFunc>
+Use this after calling C<optimize()>.
 
 =item B<getIterationCount()>
 
