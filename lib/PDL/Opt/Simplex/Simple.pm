@@ -28,6 +28,8 @@ use warnings;
 
 use Math::Round qw/nearest/;
 use Time::HiRes qw/time/;
+use Parallel::Pipes;
+
 #use Data::Dumper;
 
 use PDL;
@@ -137,6 +139,31 @@ sub new
 
 	$self->set_vars($self->{vars});
 
+	# PDL_OPT_SIMPLEX_SIMPLE_WORKERS can be used to override
+	# the number of workers:
+	if (defined($ENV{PDL_OPT_SIMPLEX_SIMPLE_WORKERS}))
+	{
+		if ($self->{workers} && $ENV{PDL_OPT_SIMPLEX_SIMPLE_WORKERS} &&
+			$self->{workers} != $ENV{PDL_OPT_SIMPLEX_SIMPLE_WORKERS})
+		{
+			warn "PDL_OPT_SIMPLEX_SIMPLE_WORKERS overrides \$self->{workers}";
+		}
+
+		$self->{workers} = $ENV{PDL_OPT_SIMPLEX_SIMPLE_WORKERS};
+	}
+
+	if ($self->{workers})
+	{
+		$self->{_pipes} = Parallel::Pipes->new($self->{workers},
+			sub {
+				my $info = shift;  # { idx => N, vars => { ... } }
+
+				my $f_ret = $self->_call_f($info->{vars});
+				my $result = { idx => $info->{idx}, f_ret => $f_ret };
+				return $result;
+			});
+	}
+
 	# vars, ssize, tolerance, max_iter, f, log
 	return $self;
 }
@@ -204,6 +231,7 @@ sub _optimize
 
 	# Catch early cancellation
 	eval {
+		local $SIG{INT} = sub { $self->{cancel} = 1; die "CANCEL"; };
 		( $vec_optimal, $opt_ssize, $optval ) = $self->__optimize($vec_initial);
 	};
 
@@ -340,6 +368,45 @@ sub _simplex_f
 		# @f_ret is the resulting weight, which is the same for _all_ vars:
 		push @f_ret, $ret foreach @vars;
 	}
+	elsif (defined($self->{workers}) && $self->{workers} > 1 && @vars > 1 && !$self->{_vars_are_pdl})
+	{
+		my $pp = $self->{_pipes};
+
+		my $idx = 0;
+		foreach my $vars (@vars)
+		{
+			my @ready = $pp->is_ready;
+
+			# If any of these have completed, reap the result:
+			for my $ready (grep $_->is_written, @ready)
+			{
+				my $result = $ready->read;  # { idx => N, f_ret => X }
+				$f_ret[$result->{idx}] = $result->{f_ret};
+			}
+
+			# and then queue the next request
+			my $info = { idx => $idx, vars => $vars };
+			$ready[0]->write($info);
+
+			$idx++;
+		}
+
+		# If reap any remaining results:
+		while (my @written = $pp->is_written)
+		{
+			foreach my $ready (@written)
+			{
+				my $result = $ready->read;  # { idx => N, f_ret => X }
+				$f_ret[$result->{idx}] = $result->{f_ret};
+			}
+		}
+
+		# The cache was lost in the child from forking, so cache it here:
+		foreach my $i (0 .. $#vars)
+		{
+			$self->_var_cache($vars[$i] => $f_ret[$i]);
+		}
+	}
 	else
 	{
 		foreach my $vars (@vars)
@@ -436,7 +503,9 @@ sub _simplex_log
 
 		num_passes => scalar( @{ $self->{_ssize} }),
 		best_pass => $self->{best_pass},
-		best_minima => $self->{best_minima}->sclr,
+		best_minima => (ref($self->{best_minima}) eq 'PDL'
+			? $self->{best_minima}->sclr
+			: $self->{best_minima}),
 		best_vars => $self->{best_vars},
 		log_count => $self->{log_count},
 		iter_count => $self->{iter_count},
@@ -946,6 +1015,8 @@ sub _get_simplex_var
 	{
 		my $val;
 
+		my $enabled = 0;
+
 		# use the pdl index if it is enabled for optimization
 		# otherwise use the original index in $var.
 		if ($var->{enabled}->[$i])
@@ -953,26 +1024,31 @@ sub _get_simplex_var
 			$val = $pdl->slice("($pdl_idx)")->copy;
 			$val *= $var->{perturb_scale}->[$i];
 			$pdl_idx++;
+			$enabled = 1;
 		}
 		else
 		{
 			$val = $var->{values}->[$i];
 		}
 
-		# Round to the nearest value on each iteration.
-		# It is probably best to round at the end to keep
-		# precision during each iteration, but the option
-		# is available:
-		if (defined($var->{round_each}))
+		# Only round or clamp values if they are enabled:
+		if ($enabled)
 		{
-			$val = _pdl_nearest($var->{round_each}->[$i], $val, $var_name);
-		}
+			# Round to the nearest value on each iteration.
+			# It is probably best to round at the end to keep
+			# precision during each iteration, but the option
+			# is available:
+			if (defined($var->{round_each}))
+			{
+				$val = _pdl_nearest($var->{round_each}->[$i], $val, $var_name);
+			}
 
-		# Modify the resulting value depending on these rules:
-		if (defined($var->{minmax}))
-		{
-			my ($min, $max) = @{ $var->{minmax}->[$i] };
-			$val = _clamp_minmax($val, $min => $max, $var_name);
+			# Modify the resulting value depending on these rules:
+			if (defined($var->{minmax}))
+			{
+				my ($min, $max) = @{ $var->{minmax}->[$i] };
+				$val = _clamp_minmax($val, $min => $max, $var_name);
+			}
 		}
 
 		push @ret, $val; 
@@ -1322,12 +1398,14 @@ PDL::Opt::Simplex::Simple - A simplex optimizer for the rest of us
 			},
 		log => sub { },  # log callback
 		max_iter => 100, # max iterations
+		workers => 5,    # parallelize with 5 forked workers (optional)
 
 		# simplex-specific options:
 		opts => {
 			# initial simplex size, smaller means less perturbation
 			ssize => 0.1,   
 		},
+
 	);
 
 
@@ -1634,6 +1712,17 @@ If you wish to disable caching then set "nocache => 1"
 
 Default: undef (cache enabled)
 
+=head2 * C<workers> - Fork a number of workers to parallelize the computation
+
+Some computations may benefit from parallization.  Internally we use
+L<Parallel::Pipes> to serialize C<vars> and send them to a worker process.
+
+Example:
+
+	workers => 5
+
+Default: undef (no forking)
+
 =head2 * C<max_iter> - Maximim number of Simplex iterations
 
 Note that one Simplex iteration may call C<f> multiple times.
@@ -1882,6 +1971,18 @@ N-dimensional pdl optimization.
 
 Patches welcome ;)
 
+=head1 ENVIRONMENT VARIABLES
+
+=over 4
+
+=item * C<PDL_OPT_SIMPLEX_SIMPLE_WORKERS=N>
+
+You can set C<PDL_OPT_SIMPLEX_SIMPLE_WORKERS> in your environment to
+control the number of workers.
+
+Note: This environment variable overrides C<workers> in C<new()>
+
+=back
 
 =head1 SEE ALSO
 
