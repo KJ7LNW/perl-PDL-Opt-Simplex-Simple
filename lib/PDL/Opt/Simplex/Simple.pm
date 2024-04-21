@@ -46,6 +46,7 @@ sub new
 			srand
 			stagnant_minima_count
 			stagnant_minima_tolerance
+			workers
 
 			opts
 			/;
