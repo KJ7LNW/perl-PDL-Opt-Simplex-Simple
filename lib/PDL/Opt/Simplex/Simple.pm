@@ -434,8 +434,12 @@ sub _simplex_f
 		$f_ret = pdl \@f_ret;
 	}
 
-	# $f_ret is guaranteed to be PDL here.  Find the minimum result,
-	# that is our best index for this iteration:
+	# $f_ret is guaranteed to be PDL here.
+
+	# Make sure none are NaN.  If any are NaN, set them to infinity:
+	$f_ret = $f_ret->setnantobad()->setbadtoval(inf);
+
+	# Find the minimum result, that is our best index for this iteration:
 	my $min_ind = minimum_ind($f_ret);
 	die "best_minima: min_ind > 1: $f_ret" if ($min_ind->nelem > 1);
 
