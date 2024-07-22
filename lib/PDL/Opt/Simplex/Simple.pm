@@ -1336,7 +1336,7 @@ sub _is_numeric
 # This is for debugging:
 #
 # Builds a tree from $h that is suitable for passing to Data::Dumper.
-# This is neccesary because PDL's need to be stringified since Dumper()
+# This is necessary because PDL's need to be stringified since Dumper()
 # will dump at the object itself.
 sub dumpify
 {
@@ -1482,7 +1482,7 @@ Useful for calling simplex again with refined values
 This is for debugging:
 
 Builds a tree from C<$vars> that is suitable for passing to L<Data::Dumper>.  This is
-neccesary because PDL's need to be stringified since Dumper() will dump at the
+necessary because PDL's need to be stringified since Dumper() will dump at the
 object itself.
 
 =back
