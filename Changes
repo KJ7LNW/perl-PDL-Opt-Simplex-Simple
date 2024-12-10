@@ -1,5 +1,8 @@
 Revision history for PDL-Opt-Simplex-Simple
 
+2.005	2024-12-10T12:17:49-08:00
+    - Improved random velocity initialization in ParticleSwarm
+
 2.004	2024-12-10T10:20:47-08:00
 	- Updated ParticleSwarm.pm:
 	  * Modified _initParticles to scale random velocity
