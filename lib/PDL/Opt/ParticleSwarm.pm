@@ -492,11 +492,10 @@ sub _updateVelocities
 		$bestNeighbors->slice(':', $i) .= $prtcls->{bestPos}->slice(':', $bestNeighIdx);
 	}
 
-	# meFactor/themFactor need to be (N,1) piddles because they are scaled
-	# against each particle:
-	my $meFactor = $self->_randInRangePDL(-$self->{meWeight}, $self->{meWeight}, $self->{dimensions}, 1);
+	# Per-particle random factors per Kennedy & Eberhart (1995):
+	my $meFactor = $self->_randInRangePDL(-$self->{meWeight}, $self->{meWeight}, $self->{dimensions}, $self->{numParticles});
 
-	my $themFactor = $self->_randInRangePDL(-$self->{themWeight}, $self->{themWeight}, $self->{dimensions}, 1);
+	my $themFactor = $self->_randInRangePDL(-$self->{themWeight}, $self->{themWeight}, $self->{dimensions}, $self->{numParticles});
 
 	my $meDelta   = $prtcls->{bestPos} - $prtcls->{currPos};
 	my $themDelta = $bestNeighbors - $prtcls->{currPos};
