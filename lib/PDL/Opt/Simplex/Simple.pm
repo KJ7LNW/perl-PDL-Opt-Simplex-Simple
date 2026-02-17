@@ -20,7 +20,7 @@
 #  respective owners and no grant or license is provided thereof.
 
 package PDL::Opt::Simplex::Simple;
-$VERSION = '2.005';
+$VERSION = '2.006';
 
 use 5.010;
 use strict;
